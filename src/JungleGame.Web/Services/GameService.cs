@@ -112,6 +112,12 @@ public sealed class GameService
 
     public Position? LastMoveTo { get; private set; }
 
+    /// <summary>True while the last applied move was a capture (drives the capture ring).</summary>
+    public bool LastMoveWasCapture { get; private set; }
+
+    /// <summary>Increments on every capture so the ring animation can restart per capture.</summary>
+    public int CaptureEpoch { get; private set; }
+
     public string StatusText { get; private set; } = string.Empty;
 
     public string TurnText { get; private set; } = string.Empty;
@@ -140,6 +146,7 @@ public sealed class GameService
         ClearSelection();
         ClearTargets();
         LastMoveFrom = LastMoveTo = null;
+        LastMoveWasCapture = false;
         RebuildPieceIds();
         LayoutEpoch++;
         UpdateStatus();
@@ -337,6 +344,11 @@ public sealed class GameService
 
         LastMoveFrom = move.From;
         LastMoveTo = move.To;
+        LastMoveWasCapture = move.IsCapture;
+        if (move.IsCapture)
+        {
+            CaptureEpoch++;
+        }
         UpdateStatus();
         MoveExecuted?.Invoke(move, move.Captured);
 
@@ -408,10 +420,12 @@ public sealed class GameService
             var last = TrackedMoves[^1];
             LastMoveFrom = last.From;
             LastMoveTo = last.To;
+            LastMoveWasCapture = last.IsCapture;
         }
         else
         {
             LastMoveFrom = LastMoveTo = null;
+            LastMoveWasCapture = false;
         }
     }
 

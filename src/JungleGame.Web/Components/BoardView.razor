@@ -6,7 +6,21 @@
    game / undo / flip snap into place. *@
 
 <div class="board-frame">
-    <div class="board-inner">
+    <div class="board-with-coords">
+        <div class="side-coords" aria-hidden="true">
+            @for (var displayRow = 0; displayRow < BoardCoordinates.Rows; displayRow++)
+            {
+                <span>@(1 + BoardCoordinates.FromDisplay(0, displayRow, Service.IsFlipped).Row)</span>
+            }
+        </div>
+        <div class="board-main">
+            <div class="top-coords" aria-hidden="true">
+                @for (var displayCol = 0; displayCol < BoardCoordinates.Cols; displayCol++)
+                {
+                    <span>@((char)('a' + BoardCoordinates.FromDisplay(displayCol, 0, Service.IsFlipped).Col))</span>
+                }
+            </div>
+            <div class="board-inner">
         <div class="board-grid">
             @for (var displayRow = 0; displayRow < BoardCoordinates.Rows; displayRow++)
             {
@@ -94,7 +108,20 @@
                     </div>
                 </div>
             }
+
+            @* Desktop capture feedback: an expanding, fading gold ring on the capture square. *@
+            @if (Service.LastMoveWasCapture && Service.LastMoveTo is { } captureTo)
+            {
+                var cdc = BoardCoordinates.DisplayCol(captureTo, Service.IsFlipped);
+                var cdr = BoardCoordinates.DisplayRow(captureTo, Service.IsFlipped);
+                var ringLeft = ((cdc + 0.5) * 100.0 / BoardCoordinates.Cols).ToString("0.####", CultureInfo.InvariantCulture);
+                var ringTop = ((cdr + 0.5) * 100.0 / BoardCoordinates.Rows).ToString("0.####", CultureInfo.InvariantCulture);
+
+                <div class="capture-ring" @key="Service.CaptureEpoch" style="@($"left:{ringLeft}%;top:{ringTop}%")"></div>
+            }
         </div>
+    </div>
+    </div>
     </div>
 </div>
 

@@ -1,4 +1,5 @@
 @page "/"
+@inject SoundPlayer Sound
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 @implements IDisposable
@@ -80,6 +81,9 @@
             </div>
             <div class="button-row">
                 <button class="btn" @onclick="Flip">Flip board</button>
+                <button class="btn" @onclick="ToggleMute">@(Sound.IsMuted ? "🔇 Unmute" : "🔊 Mute")</button>
+            </div>
+            <div class="button-row">
                 <button class="btn" @onclick="() => _showHowToPlay = true">How to play</button>
             </div>
 
@@ -162,9 +166,14 @@
         var outcome = _service.OnSquareClicked(position);
         StateHasChanged();
 
-        if (outcome == ClickOutcome.Moved && _service.ShouldAiMove())
+        switch (outcome)
         {
-            _ = RunAiTurnAsync();
+            case ClickOutcome.Selected:
+                _ = Sound.PlayAsync("select");
+                break;
+            case ClickOutcome.Moved when _service.ShouldAiMove():
+                _ = RunAiTurnAsync();
+                break;
         }
     }
 
@@ -191,6 +200,8 @@
         _service.ToggleFlip();
         StateHasChanged();
     }
+
+    private void ToggleMute() => Sound.SetMuted(!Sound.IsMuted);
 
     private void OnGameModeChanged(ChangeEventArgs e)
     {
@@ -232,11 +243,13 @@
     private void OnMoveExecuted(Move move, Piece? captured)
     {
         StateHasChanged();
+        _ = Sound.PlayAsync(captured is not null ? "capture" : "move");
     }
 
     private void OnGameEnded(GameStatus status)
     {
         StateHasChanged();
+        _ = Sound.PlayAsync(status == GameStatus.Draw ? "draw" : "win");
     }
 
     // --- AI turn loop (desktop DoAIMove, marshalled onto the render thread) ----------
