@@ -265,11 +265,13 @@
         try
         {
             var service = _service;
-            // Pin the state reference for this turn: if a New Game replaces it while the
-            // search runs on a background thread, the stale move must not be applied.
-            var pinnedState = service.State;
+            // Pin the game epoch: applying a move replaces the immutable GameState, so the
+            // state object cannot serve as the pin — but a New Game (or a mode/first-move
+            // change) bumps GameEpoch, which is how a stale search result is detected and
+            // never applied to a fresh game.
+            var epoch = service.GameEpoch;
 
-            while (service.State == pinnedState && service.ShouldAiMove())
+            while (service.GameEpoch == epoch && service.ShouldAiMove())
             {
                 await InvokeAsync(() =>
                 {
@@ -291,7 +293,7 @@
                 await InvokeAsync(() =>
                 {
                     service.IsBusy = false;
-                    if (service.State != pinnedState || cts.IsCancellationRequested)
+                    if (service.GameEpoch != epoch || cts.IsCancellationRequested)
                     {
                         return; // a new game started during the search; abandon this turn
                     }
@@ -300,7 +302,7 @@
                     service.ApplyAiMove(best);
                 });
 
-                if (service.State == pinnedState && service.ShouldAiMove())
+                if (service.GameEpoch == epoch && service.ShouldAiMove())
                 {
                     await Task.Delay(service.AiVsAiPaceMs); // pace AI-vs-AI so moves are visible
                 }

@@ -56,6 +56,14 @@ public sealed class GameService
     /// <summary>Set by the page before each AI search; cancelled when a game resets.</summary>
     public CancellationTokenSource? AiCts { get; set; }
 
+    /// <summary>
+    /// Incremented on every StartNewGame. The page's AI loop pins this epoch so a stale
+    /// search (started against a replaced game) is never applied. Unlike the state object
+    /// itself, the epoch survives the moves of a game — the immutable GameState is replaced
+    /// on every applied move, so it cannot serve as the pin.
+    /// </summary>
+    public int GameEpoch { get; private set; }
+
     /// <summary>Delay between moves in AI-vs-AI so play is visible (shortened in e2e).</summary>
     public int AiVsAiPaceMs { get; set; } = 300;
 
@@ -138,6 +146,7 @@ public sealed class GameService
     public void StartNewGame()
     {
         CancelAiSearch();
+        GameEpoch++;
         State = GameState.CreateInitial();
         _trackedMoves = new List<Move>();
         SearchInfoText = string.Empty;

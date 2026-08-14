@@ -38,3 +38,7 @@ dotnet_diagnostic.CA1822.severity = none
 [tests/JungleGame.Tests/**]
 dotnet_diagnostic.CA1707.severity = none
 dotnet_diagnostic.CA1711.severity = none
+
+[tests/JungleGame.Web.Tests/**]
+dotnet_diagnostic.CA1707.severity = none
+dotnet_diagnostic.CA1711.severity = none
