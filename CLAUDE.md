@@ -22,10 +22,12 @@ The desktop source to port is **`C:\GitHub\deepseek_cc_jungle`** (.NET 8 + WPF).
 
 The engine was copied verbatim from `deepseek_cc_jungle`; this repository is the only place the **P5 candidate set** lives (the desktop's P3/P4 recorded results still apply). P5 = SEE capture ordering + losing-capture pruning in quiescence (`AI/SeeEvaluator.cs`), a counter-move heuristic, and three eval terms (Rat-den influence, front-trap guard, clear-jump-lane bonus), all gated by the ctor `legacyP5` flag and Bench `--legacyP5B`/`--legacyP5A`. Protocol: same time for both sides, B on the legacy (pre-P5) set; accept a change when A wins ≥ 55% of decisive games; failed candidates are reverted before merge (like the desktop's dropped P4 terms). Do not "fix" the root window and do not re-add the dropped P4 eval terms — the desktop's recorded results forbid both.
 
-Recorded results (A = P5 on, B = legacyP5):
-- TBD after gates (fill from Bench runs).
+Recorded results (A = P5 on, B = legacyP5, 1000 ms/move both):
+- Classic start position, 20 games: A 10 wins, B 3 wins, 7 draws → A 77% of decisive — PASS.
+- 4 random opening plies, 40 games: A 12 wins, B 8 wins, 20 draws → A 60% of decisive — PASS.
+- Combined: 22-11 across 33 decisive games (67%) — the P5 set ships.
 
-Bench before/after (2 s from start): baseline 1,426,694 nodes / ~713k nps / depth 11; P5: TBD.
+Bench before/after (2 s from start): baseline 1,426,694 nodes / ~713k nps / depth 11; P5: 1,203,244 nodes / ~601k nps / depth 11 — ~16% fewer nodes for the same depth (SEE ordering efficiency) at ~16% higher per-node cost (SEE computation); the gates above are the net-strength verdict.
 
 ## Key behavioral constraints
 
