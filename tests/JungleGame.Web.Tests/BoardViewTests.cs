@@ -25,8 +25,9 @@ public class BoardViewTests : TestContext
     {
         var view = RenderBoard(this, new GameService());
 
-        // First cell in DOM order is display (0,0), which is logical (0,0) when unflipped.
-        Assert.Equal("0,0", view.FindAll(".square")[0].GetAttribute("data-square"));
+        // First cell in DOM order is display (0,0), which maps to logical (0,8) when
+        // unflipped (rows are mirrored so Blue renders at the bottom, like the desktop).
+        Assert.Equal("0,8", view.FindAll(".square")[0].GetAttribute("data-square"));
     }
 
     [Fact]
@@ -36,8 +37,19 @@ public class BoardViewTests : TestContext
         service.ToggleFlip();
         var view = RenderBoard(this, service);
 
-        // With the board flipped, display (0,0) maps to logical (6,8).
-        Assert.Equal("6,8", view.FindAll(".square")[0].GetAttribute("data-square"));
+        // With the board flipped, display (0,0) maps to logical (6,0).
+        Assert.Equal("6,0", view.FindAll(".square")[0].GetAttribute("data-square"));
+    }
+
+    [Fact]
+    public void BlueDen_RendersAtBottom_RedDen_AtTop()
+    {
+        var view = RenderBoard(this, new GameService());
+
+        // Blue's den (3,0) sits in the bottom display row, Red's den (3,8) in the top one —
+        // the desktop-identical orientation (Blue at the bottom edge).
+        Assert.Contains("grid-row:9", view.Find("[data-square=\"3,0\"]").GetAttribute("style"));
+        Assert.Contains("grid-row:1", view.Find("[data-square=\"3,8\"]").GetAttribute("style"));
     }
 
     [Fact]

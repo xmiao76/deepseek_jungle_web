@@ -13,6 +13,10 @@ test('cross-origin isolation is active (WASM threading available)', async ({ pag
     expect(isolated).toBe(true);
 
     await expect(page.locator('.badge', { hasText: 'threading: active' })).toBeVisible();
+
+    // Regression lock: the error banner must stay hidden unless a real unhandled
+    // exception occurs (it was once always-visible due to a missing CSS rule).
+    await expect(page.locator('#blazor-error-ui')).toBeHidden();
 });
 
 test('AI vs AI plays a full game to a terminal state', async ({ page }) => {

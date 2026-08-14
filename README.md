@@ -85,6 +85,9 @@ regression-tested by the carried-over suite.
 
 - **Select** one of your pieces by clicking it (gold outline). Legal moves appear as green
   dots; capturable enemies get a red ring. Click a highlighted square to move.
+- Your side renders at the **bottom edge** of the board (Blue in human-first games, Red in
+  AI-first games), identical to the desktop app — each player's Rat starts on their right,
+  their Elephant on their left.
 - **New game** restarts with the current settings. **Undo** takes back the last move — in
   Human vs AI it also undoes the AI's reply. **Flip board** rotates the view 180°
   (visual only: it never changes the game state, the sides, or whose turn it is). **Mute**
