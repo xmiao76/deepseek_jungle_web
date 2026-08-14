@@ -1,0 +1,26 @@
+# Cloudflare Pages custom headers.
+# COOP/COEP make the page cross-origin isolated so SharedArrayBuffer is available —
+# required by the .NET WebAssembly threading that runs the AI search off the UI thread.
+# The app loads no cross-origin resources, so require-corp blocks nothing.
+
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
+
+# Entry points must never be cached, or updates ship broken/stale frameworks.
+/index.html
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/_framework/blazor.boot.json
+  Cache-Control: no-cache, no-store, must-revalidate
+
+# .NET 8 framework files are NOT content-hashed (blazor.boot.json carries integrity
+# hashes instead), so they must be revalidated on every deploy; a stale cached assembly
+# against a fresh boot manifest breaks the app on load. no-cache keeps ETag/304
+# revalidation, so unchanged files stay cheap.
+/_framework/*
+  Cache-Control: no-cache, must-revalidate
+
+# Correct MIME for WebAssembly modules (belt and braces; Pages usually infers it).
+/_framework/*.wasm
+  Content-Type: application/wasm

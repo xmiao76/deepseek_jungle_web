@@ -1,0 +1,64 @@
+@page "/"
+@inject IJSRuntime JS
+@inject GameService Game
+
+<PageTitle>Jungle — Dou Shou Qi (threading spike)</PageTitle>
+
+<div class="spike">
+    <div class="spike-header">
+        <span class="badge @(_crossOriginIsolated ? "badge-ok" : "badge-warn")"
+              title="Background-thread AI requires cross-origin isolation (COOP/COEP headers).">
+            threading: @(_crossOriginIsolated ? "active" : "unavailable")
+        </span>
+        <span class="badge badge-info">.NET WASM · AOT</span>
+    </div>
+
+    <div class="spike-spinner" aria-hidden="true"></div>
+
+    <button class="btn btn-primary" @onclick="RunSearchAsync" disabled="@_searching">
+        Run ~2s AI search on a background thread
+    </button>
+
+    @if (_searching)
+    {
+        <p>Searching… watch the spinner: the UI thread must not freeze.</p>
+    }
+    @if (_report is not null)
+    {
+        <p class="spike-result">@_report</p>
+    }
+</div>
+
+@code {
+    private bool _crossOriginIsolated;
+    private bool _searching;
+    private string? _report;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                _crossOriginIsolated = await JS.InvokeAsync<bool>("jungleEnv.isCrossOriginIsolated");
+            }
+            catch
+            {
+                _crossOriginIsolated = false;
+            }
+            StateHasChanged();
+        }
+    }
+
+    private async Task RunSearchAsync()
+    {
+        _searching = true;
+        _report = null;
+        StateHasChanged();
+
+        using var cts = new CancellationTokenSource();
+        _report = await Game.RunSearchAsync(cts.Token);
+
+        _searching = false;
+    }
+}

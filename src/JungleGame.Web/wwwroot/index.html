@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Jungle — Dou Shou Qi</title>
+    <base href="/" />
+    <link rel="stylesheet" href="css/app.css" />
+</head>
+
+<body>
+    <div id="app">
+        <!-- Boot overlay: lives inside #app, so Blazor's first render replaces it. -->
+        <div class="boot-overlay">
+            <div class="boot-spinner" aria-hidden="true"></div>
+            <div class="boot-title">Jungle 斗兽棋</div>
+            <div class="boot-status" id="boot-status">Loading the .NET runtime and game engine…</div>
+            <div class="boot-note">The first download is a few MB and can take a few seconds.</div>
+        </div>
+    </div>
+
+    <div id="blazor-error-ui">
+        An unhandled error has occurred.
+        <a href="." class="reload">Reload</a>
+        <a class="dismiss">🗙</a>
+    </div>
+
+    <script src="js/app.js"></script>
+    <script src="_framework/blazor.webassembly.js" autostart="false"></script>
+    <script>
+        Blazor.start().catch(function (err) {
+            var status = document.getElementById('boot-status');
+            if (status) {
+                status.textContent = 'Failed to start: ' + err;
+                status.classList.add('boot-error');
+            }
+            var spinner = document.querySelector('.boot-spinner');
+            if (spinner) { spinner.remove(); }
+        });
+    </script>
+</body>
+
+</html>
