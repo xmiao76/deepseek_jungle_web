@@ -117,7 +117,10 @@
                 var ringLeft = ((cdc + 0.5) * 100.0 / BoardCoordinates.Cols).ToString("0.####", CultureInfo.InvariantCulture);
                 var ringTop = ((cdr + 0.5) * 100.0 / BoardCoordinates.Rows).ToString("0.####", CultureInfo.InvariantCulture);
 
-                <div class="capture-ring" @key="Service.CaptureEpoch" style="@($"left:{ringLeft}%;top:{ringTop}%")"></div>
+                @* Key namespaced with a "ring-" prefix: sibling keys in this keyed container
+                   are the piece ids (0-15), so an un-prefixed epoch key would collide with
+                   them and break Blazor's keyed diff ("parentNode" renderer errors). *@
+                <div class="capture-ring" @key="@($"ring-{Service.CaptureEpoch}")" style="@($"left:{ringLeft}%;top:{ringTop}%")"></div>
             }
         </div>
     </div>
