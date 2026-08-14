@@ -1,64 +1,371 @@
 @page "/"
+@inject NavigationManager Nav
 @inject IJSRuntime JS
-@inject GameService Game
+@implements IDisposable
 
-<PageTitle>Jungle — Dou Shou Qi (threading spike)</PageTitle>
+<PageTitle>Jungle — Dou Shou Qi</PageTitle>
 
-<div class="spike">
-    <div class="spike-header">
-        <span class="badge @(_crossOriginIsolated ? "badge-ok" : "badge-warn")"
-              title="Background-thread AI requires cross-origin isolation (COOP/COEP headers).">
-            threading: @(_crossOriginIsolated ? "active" : "unavailable")
-        </span>
-        <span class="badge badge-info">.NET WASM · AOT</span>
+<div class="game-shell">
+    <header class="game-header">
+        <h1>Jungle <span class="subtitle">斗兽棋 · Dou Shou Qi</span></h1>
+        <div class="header-badges">
+            <span class="badge">@AppInfo.EngineName v@(AppInfo.Version)</span>
+            <span class="badge">@AppInfo.Runtime</span>
+            <span class="badge @(_crossOriginIsolated ? "badge-ok" : "badge-warn")" title="Background-thread AI requires cross-origin isolation (COOP/COEP headers).">
+                threading: @(_crossOriginIsolated ? "active" : "unavailable")
+            </span>
+        </div>
+    </header>
+
+    <div class="game-main">
+        <section class="board-column">
+            <div class="status-bar">
+                <span class="status-text @(_service.IsBusy ? "thinking" : "")">@_service.StatusText</span>
+                <span class="turn-text">@_service.TurnText</span>
+            </div>
+
+            <div class="board-wrap">
+                <BoardView Service="_service" SquareClicked="HandleSquareClicked" />
+
+                @if (!string.IsNullOrEmpty(_service.ResultMessage))
+                {
+                    <div class="result-overlay" data-result="@_service.ResultToken">
+                        <div class="result-panel">
+                            <div class="result-message">@_service.ResultMessage</div>
+                            <button class="btn btn-primary" @onclick="NewGame">Play again</button>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <div class="search-info" aria-live="polite">@_service.SearchInfoText</div>
+        </section>
+
+        <aside class="control-panel">
+            <h2>Game setup</h2>
+
+            <label class="field">
+                <span>Game mode</span>
+                <select value="@_service.GameMode" @onchange="OnGameModeChanged">
+                    @foreach (var mode in _service.GameModes)
+                    {
+                        <option value="@mode">@mode.Label()</option>
+                    }
+                </select>
+            </label>
+
+            <label class="field">
+                <span>First move</span>
+                <select value="@_service.FirstMove" @onchange="OnFirstMoveChanged">
+                    @foreach (var choice in _service.FirstMoveChoices)
+                    {
+                        <option value="@choice">@choice.FirstMoveLabel(_service.GameMode)</option>
+                    }
+                </select>
+            </label>
+
+            <label class="field">
+                <span>AI difficulty</span>
+                <select value="@_service.Difficulty" @onchange="OnDifficultyChanged">
+                    @foreach (var difficulty in _service.Difficulties)
+                    {
+                        <option value="@difficulty">@difficulty.Label()</option>
+                    }
+                </select>
+            </label>
+
+            <div class="button-row">
+                <button class="btn btn-primary" @onclick="NewGame">New game</button>
+                <button class="btn" disabled="@(_service.IsBusy || _service.TrackedMoves.Count == 0)" @onclick="Undo">Undo</button>
+            </div>
+            <div class="button-row">
+                <button class="btn" @onclick="Flip">Flip board</button>
+                <button class="btn" @onclick="() => _showHowToPlay = true">How to play</button>
+            </div>
+
+            <h2>Captured</h2>
+            <div class="captured">
+                <div class="captured-row"><span class="captured-label">Blue:</span> @PieceEmojis(_service.State.CapturedBlue)</div>
+                <div class="captured-row"><span class="captured-label">Red:</span> @PieceEmojis(_service.State.CapturedRed)</div>
+            </div>
+
+            <h2>Moves</h2>
+            <div class="move-history" id="move-history">
+                @foreach (var line in _service.BuildMoveHistory())
+                {
+                    <div class="move-line">@line</div>
+                }
+            </div>
+
+            <footer class="credits">
+                <div>Jungle v@(AppInfo.Version) · @AppInfo.EngineName</div>
+                <div>Made with model <strong>@AppInfo.ModelCredit</strong> · code agent <strong>@AppInfo.AgentCredit</strong></div>
+            </footer>
+        </aside>
     </div>
-
-    <div class="spike-spinner" aria-hidden="true"></div>
-
-    <button class="btn btn-primary" @onclick="RunSearchAsync" disabled="@_searching">
-        Run ~2s AI search on a background thread
-    </button>
-
-    @if (_searching)
-    {
-        <p>Searching… watch the spinner: the UI thread must not freeze.</p>
-    }
-    @if (_report is not null)
-    {
-        <p class="spike-result">@_report</p>
-    }
 </div>
 
+@if (_showHowToPlay)
+{
+    <HowToPlay Close="() => _showHowToPlay = false" />
+}
+
 @code {
+    private const int MaxPresetPaceMs = 5000;
+
+    private readonly GameService _service = new();
+    private bool _aiLoopRunning;
+    private bool _showHowToPlay;
     private bool _crossOriginIsolated;
-    private bool _searching;
-    private string? _report;
+
+    protected override void OnInitialized()
+    {
+        _service.MoveExecuted += OnMoveExecuted;
+        _service.GameEnded += OnGameEnded;
+        ApplyQueryPresets();
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender)
+        if (!firstRender)
         {
-            try
-            {
-                _crossOriginIsolated = await JS.InvokeAsync<bool>("jungleEnv.isCrossOriginIsolated");
-            }
-            catch
-            {
-                _crossOriginIsolated = false;
-            }
+            return;
+        }
+
+        try
+        {
+            _crossOriginIsolated = await JS.InvokeAsync<bool>("jungleEnv.isCrossOriginIsolated");
+        }
+        catch (Exception ex) when (ex is JSException or InvalidOperationException or TaskCanceledException)
+        {
+            _crossOriginIsolated = false;
+        }
+        StateHasChanged();
+
+        if (_service.ShouldAiMove())
+        {
+            _ = RunAiTurnAsync();
+        }
+    }
+
+    public void Dispose()
+    {
+        _service.MoveExecuted -= OnMoveExecuted;
+        _service.GameEnded -= OnGameEnded;
+        _service.CancelAiSearch();
+    }
+
+    // --- Interaction ---------------------------------------------------------------
+
+    private void HandleSquareClicked(Position position)
+    {
+        var outcome = _service.OnSquareClicked(position);
+        StateHasChanged();
+
+        if (outcome == ClickOutcome.Moved && _service.ShouldAiMove())
+        {
+            _ = RunAiTurnAsync();
+        }
+    }
+
+    private void NewGame()
+    {
+        _service.StartNewGame();
+        StateHasChanged();
+        if (_service.ShouldAiMove())
+        {
+            _ = RunAiTurnAsync();
+        }
+    }
+
+    private void Undo()
+    {
+        if (_service.Undo())
+        {
             StateHasChanged();
         }
     }
 
-    private async Task RunSearchAsync()
+    private void Flip()
     {
-        _searching = true;
-        _report = null;
+        _service.ToggleFlip();
         StateHasChanged();
-
-        using var cts = new CancellationTokenSource();
-        _report = await Game.RunSearchAsync(cts.Token);
-
-        _searching = false;
     }
+
+    private void OnGameModeChanged(ChangeEventArgs e)
+    {
+        if (Enum.TryParse<GameMode>(e.Value?.ToString(), out var mode))
+        {
+            _service.GameMode = mode; // setter starts a new game
+            StateHasChanged();
+            if (_service.ShouldAiMove())
+            {
+                _ = RunAiTurnAsync();
+            }
+        }
+    }
+
+    private void OnFirstMoveChanged(ChangeEventArgs e)
+    {
+        if (Enum.TryParse<FirstMoveChoice>(e.Value?.ToString(), out var choice))
+        {
+            _service.FirstMove = choice; // setter starts a new game
+            StateHasChanged();
+            if (_service.ShouldAiMove())
+            {
+                _ = RunAiTurnAsync();
+            }
+        }
+    }
+
+    private void OnDifficultyChanged(ChangeEventArgs e)
+    {
+        if (Enum.TryParse<Difficulty>(e.Value?.ToString(), out var difficulty))
+        {
+            _service.Difficulty = difficulty;
+            StateHasChanged();
+        }
+    }
+
+    // --- Engine events ---------------------------------------------------------------
+
+    private void OnMoveExecuted(Move move, Piece? captured)
+    {
+        StateHasChanged();
+    }
+
+    private void OnGameEnded(GameStatus status)
+    {
+        StateHasChanged();
+    }
+
+    // --- AI turn loop (desktop DoAIMove, marshalled onto the render thread) ----------
+
+    private async Task RunAiTurnAsync()
+    {
+        if (_aiLoopRunning)
+        {
+            return;
+        }
+
+        _aiLoopRunning = true;
+        try
+        {
+            var service = _service;
+            // Pin the state reference for this turn: if a New Game replaces it while the
+            // search runs on a background thread, the stale move must not be applied.
+            var pinnedState = service.State;
+
+            while (service.State == pinnedState && service.ShouldAiMove())
+            {
+                await InvokeAsync(() =>
+                {
+                    service.IsBusy = true;
+                    service.UpdateStatus();
+                    StateHasChanged();
+                });
+
+                service.CancelAiSearch();
+                var cts = new CancellationTokenSource();
+                service.AiCts = cts;
+
+                var searchState = service.State;
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                Move? best = null;
+                await Task.Run(() => best = service.Ai.FindBestMove(searchState, cts.Token));
+                sw.Stop();
+
+                await InvokeAsync(() =>
+                {
+                    service.IsBusy = false;
+                    if (service.State != pinnedState || cts.IsCancellationRequested)
+                    {
+                        return; // a new game started during the search; abandon this turn
+                    }
+
+                    service.UpdateSearchInfo(service.Ai.LastCompletedDepth, service.Ai.NodesSearched, sw.ElapsedMilliseconds);
+                    service.ApplyAiMove(best);
+                });
+
+                if (service.State == pinnedState && service.ShouldAiMove())
+                {
+                    await Task.Delay(service.AiVsAiPaceMs); // pace AI-vs-AI so moves are visible
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // Never let the loop die silently: log, then let the finally block reset the
+            // UI so the player sees a responsive (if idle) game instead of a stuck one.
+            Console.Error.WriteLine($"AI turn loop failed: {ex}");
+        }
+        finally
+        {
+            _aiLoopRunning = false;
+            _service.CancelAiSearch(); // dispose the turn's CancellationTokenSource
+            await InvokeAsync(() =>
+            {
+                _service.IsBusy = false;
+                _service.UpdateStatus();
+                StateHasChanged();
+            });
+        }
+    }
+
+    // --- Helpers ---------------------------------------------------------------------
+
+    /// <summary>
+    /// Hidden presets for automated testing: ?mode=aiai runs a full AI-vs-AI game
+    /// (the WASM smoke test, mirroring the desktop Bench --selfplay crash smoke);
+    /// diff/first/pace shorten or shape it.
+    /// </summary>
+    private void ApplyQueryPresets()
+    {
+        var query = new Uri(Nav.Uri).Query.TrimStart('?');
+        if (string.IsNullOrEmpty(query))
+        {
+            return;
+        }
+
+        foreach (var pair in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var kv = pair.Split('=', 2);
+            if (kv.Length != 2)
+            {
+                continue;
+            }
+
+            switch (kv[0].ToLowerInvariant())
+            {
+                case "mode" when kv[1].Equals("aiai", StringComparison.OrdinalIgnoreCase):
+                    _service.GameMode = GameMode.AiVsAi;
+                    break;
+                case "diff" when Enum.TryParse<Difficulty>(kv[1], true, out var difficulty):
+                    _service.Difficulty = difficulty;
+                    break;
+                case "first" when kv[1].Equals("ai", StringComparison.OrdinalIgnoreCase):
+                    _service.FirstMove = FirstMoveChoice.AiFirst;
+                    break;
+                case "pace" when int.TryParse(kv[1], out var paceMs):
+                    _service.AiVsAiPaceMs = Math.Clamp(paceMs, 0, MaxPresetPaceMs);
+                    break;
+            }
+        }
+    }
+
+    private static string PieceEmojis(IReadOnlyList<Piece> pieces) =>
+        pieces.Count == 0 ? "—" : string.Join(" ", pieces.Select(p => AnimalEmoji(p.Animal)));
+
+    private static string AnimalEmoji(Animal animal) => animal switch
+    {
+        Animal.Rat => "\U0001F401",
+        Animal.Cat => "\U0001F408",
+        Animal.Dog => "\U0001F415",
+        Animal.Wolf => "\U0001F43A",
+        Animal.Leopard => "\U0001F406",
+        Animal.Tiger => "\U0001F42F",
+        Animal.Lion => "\U0001F981",
+        Animal.Elephant => "\U0001F418",
+        _ => "?",
+    };
 }

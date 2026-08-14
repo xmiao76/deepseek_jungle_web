@@ -1,0 +1,141 @@
+@using System.Globalization
+@using JungleGame.Core.Model
+
+@* Board: CSS-grid terrain cells (desktop Theme.xaml palette) with an absolutely positioned
+   piece layer keyed by LayoutEpoch, so plain moves slide via CSS transitions while new
+   game / undo / flip snap into place. *@
+
+<div class="board-frame">
+    <div class="board-inner">
+        <div class="board-grid">
+            @for (var displayRow = 0; displayRow < BoardCoordinates.Rows; displayRow++)
+            {
+                @for (var displayCol = 0; displayCol < BoardCoordinates.Cols; displayCol++)
+                {
+                    var dr = displayRow;
+                    var dc = displayCol;
+                    var position = BoardCoordinates.FromDisplay(dc, dr, Service.IsFlipped);
+                    var terrain = Service.State.Board.GetTerrain(position);
+                    // Desktop deterministic checker: (logicalCol*7 + logicalRow*3) % 2 == 0
+                    // (MainWindow.Rendering.cs) — stable across flips.
+                    var checkerLight = (position.Col * 7 + position.Row * 3) % 2 == 0;
+                    var classes = $"square terrain-{terrain.ToString().ToLowerInvariant()} {(checkerLight ? "checker-light" : "checker-dark")}";
+
+                    <div class="@classes"
+                         style="@($"grid-row:{dr + 1};grid-column:{dc + 1}")"
+                         data-square="@($"{position.Col},{position.Row}")"
+                         @onclick="() => SquareClicked.InvokeAsync(position)">
+
+                        @switch (terrain)
+                        {
+                            case Terrain.River:
+                                <svg class="river-waves" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                                    <line x1="0" y1="30" x2="100" y2="30" />
+                                    <line x1="0" y1="50" x2="100" y2="50" />
+                                    <line x1="0" y1="70" x2="100" y2="70" />
+                                </svg>
+                                break;
+                            case Terrain.TrapBlue:
+                            case Terrain.TrapRed:
+                                <span class="trap-glyph" aria-hidden="true">⚠</span>
+                                break;
+                            case Terrain.DenBlue:
+                            case Terrain.DenRed:
+                                <span class="den-glyph" aria-hidden="true">🏠</span>
+                                break;
+                        }
+
+                        @if (IsLastMove(position))
+                        {
+                            <div class="highlight-lastmove @(position == Service.LastMoveTo ? "lastmove-to" : "lastmove-from")"></div>
+                        }
+                        @if (Service.Selected == position)
+                        {
+                            <div class="highlight-selected"></div>
+                        }
+                        @if (Service.Targets.Contains(position))
+                        {
+                            @if (Service.State.GetPieceAt(position) is not null)
+                            {
+                                <div class="highlight-capture"></div>
+                            }
+                            else
+                            {
+                                <div class="highlight-target"></div>
+                            }
+                        }
+                    </div>
+                }
+            }
+        </div>
+
+        <div class="piece-layer" @key="Service.LayoutEpoch">
+            @foreach (var (position, piece) in Pieces())
+            {
+                var id = Service.PieceIds[position];
+                var dc = BoardCoordinates.DisplayCol(position, Service.IsFlipped);
+                var dr = BoardCoordinates.DisplayRow(position, Service.IsFlipped);
+                var sideClass = piece.Owner == Player.Blue ? "blue" : "red";
+                var left = (dc * 100.0 / BoardCoordinates.Cols).ToString("0.####", CultureInfo.InvariantCulture);
+                var top = (dr * 100.0 / BoardCoordinates.Rows).ToString("0.####", CultureInfo.InvariantCulture);
+                var onEnemyTrap = Service.State.Board.IsTrap(position, piece.Owner);
+
+                <div class="piece @sideClass" @key="id" style="@($"left:{left}%;top:{top}%")"
+                     data-piece="@($"{piece.Owner.ToString().ToLowerInvariant()}-{piece.Animal.ToString().ToLowerInvariant()}")">
+                    <div class="disc">
+                        <span class="emoji-shadow" aria-hidden="true">@Emoji(piece.Animal)</span>
+                        <span class="emoji">@Emoji(piece.Animal)</span>
+                        <span class="piece-name">@AnimalName(piece.Animal)</span>
+                        <span class="rank-pip">@piece.Rank</span>
+                        @if (onEnemyTrap)
+                        {
+                            <span class="trap-badge" title="On an enemy trap — its rank is zeroed.">!</span>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public GameService Service { get; set; } = default!;
+
+    [Parameter]
+    public EventCallback<Position> SquareClicked { get; set; }
+
+    private bool IsLastMove(Position p) => p == Service.LastMoveFrom || p == Service.LastMoveTo;
+
+    private IEnumerable<(Position Position, Piece Piece)> Pieces() => Service.State.Pieces
+        .OrderBy(kv => kv.Value.Rank)
+        .Select(kv => (kv.Key, kv.Value));
+
+    /// <summary>Desktop MainViewModel.AnimalEmoji.</summary>
+    private static string Emoji(Animal animal) => animal switch
+    {
+        Animal.Rat => "\U0001F401",     // 🐁
+        Animal.Cat => "\U0001F408",     // 🐈
+        Animal.Dog => "\U0001F415",     // 🐕
+        Animal.Wolf => "\U0001F43A",    // 🐺
+        Animal.Leopard => "\U0001F406", // 🐆
+        Animal.Tiger => "\U0001F42F",   // 🐯
+        Animal.Lion => "\U0001F981",    // 🦁
+        Animal.Elephant => "\U0001F418", // 🐘
+        _ => "?",
+    };
+
+    /// <summary>Desktop MainViewModel.AnimalName.</summary>
+    private static string AnimalName(Animal animal) => animal switch
+    {
+        Animal.Rat => "Rat",
+        Animal.Cat => "Cat",
+        Animal.Dog => "Dog",
+        Animal.Wolf => "Wolf",
+        Animal.Leopard => "Leopard",
+        Animal.Tiger => "Tiger",
+        Animal.Lion => "Lion",
+        Animal.Elephant => "Elephant",
+        _ => "?",
+    };
+}
