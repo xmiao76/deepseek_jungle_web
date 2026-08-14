@@ -11,3 +11,4 @@ dist/
 *.dll
 *.exe
 /test-results/
+/.wrangler/
