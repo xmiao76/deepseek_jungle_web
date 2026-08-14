@@ -34,7 +34,9 @@ jobs:
         run: dotnet run --project src/JungleGame.Bench -c Release --no-build -- --selfplay --games 2 --timeA 1000 --timeB 300
 
       - name: Publish Blazor app (AOT)
-        run: dotnet publish src/JungleGame.Web/JungleGame.Web.csproj -c Release --no-build
+        # No --no-build here: the WASM/AOT publish invokes Build for the referenced
+        # Core project (NETSDK1085 otherwise).
+        run: dotnet publish src/JungleGame.Web/JungleGame.Web.csproj -c Release
 
       - name: Upload static site artifact
         uses: actions/upload-artifact@v4
