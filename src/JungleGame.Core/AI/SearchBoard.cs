@@ -234,6 +234,46 @@ internal sealed class SearchBoard
     internal static bool IsEnemyTrapSquare(int sq, int side) =>
         side == 0 ? TerrainOf[sq] == TrapRed : TerrainOf[sq] == TrapBlue;
 
+    /// <summary>
+    /// True when the Lion/Tiger piece at <paramref name="from"/> has a legal, rat-free
+    /// jump whose landing square is <paramref name="target"/>. Purely geometric (used by
+    /// SEE and the evaluation); occupancy/capturability are checked by the caller.
+    /// </summary>
+    internal static bool CanJumpTo(SearchBoard board, byte pieceId, int from, int target)
+    {
+        Jump[]? jumps = RankOf[pieceId] == 7 ? LionJumpsOf[from] : RankOf[pieceId] == 6 ? TigerJumpsOf[from] : null;
+        if (jumps == null)
+            return false;
+
+        foreach (var jump in jumps)
+        {
+            if (jump.Target == target && !jump.IsBlockedByRat(board))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// True when the Lion/Tiger has a rat-free jump whose landing square lies on the
+    /// enemy half of the board — a clear lane toward the enemy den. (P5 eval term.)
+    /// </summary>
+    internal static bool HasClearJumpToEnemyHalf(SearchBoard board, byte pieceId, int from)
+    {
+        Jump[]? jumps = RankOf[pieceId] == 7 ? LionJumpsOf[from] : RankOf[pieceId] == 6 ? TigerJumpsOf[from] : null;
+        if (jumps == null)
+            return false;
+
+        int side = ZobristIndex(pieceId) & 1;
+        foreach (var jump in jumps)
+        {
+            int targetRow = jump.Target / 7;
+            bool enemyHalf = side == 0 ? targetRow >= 6 : targetRow <= 2;
+            if (enemyHalf && !jump.IsBlockedByRat(board))
+                return true;
+        }
+        return false;
+    }
+
     /// <summary>Mirror of CaptureResolver.CanCapture (kept in sync by differential tests).</summary>
     public static bool CanCapture(byte attackerId, int attackerSq, byte defenderId, int defenderSq)
     {

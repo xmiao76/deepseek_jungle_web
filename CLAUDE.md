@@ -13,10 +13,19 @@ The desktop source to port is **`C:\GitHub\deepseek_cc_jungle`** (.NET 8 + WPF).
 ## Architecture (per the spec)
 
 - **Port, don't rewrite, the engine.** `JungleGame.Core` (rules + engine + AI in ONE project — AI lives in its `AI/` subfolder, not a separate project) is copied **verbatim** from the desktop repo, along with its xUnit test project (`JungleGame.Tests`) and `JungleGame.Bench` (portable, no file I/O). The authoritative rule interpretation is the desktop code (`Rules/MoveValidator.cs`, `Rules/CaptureResolver.cs`, `Engine/GameController.cs` — win/draw logic lives in its private `CheckWinCondition`, there is no `WinChecker` class). No rule logic may be reimplemented in JavaScript.
-- **Engine API reality** (differs from the qwen engine the original prompt assumed): no `AiConfig` class — difficulty is `SetTimeLimit(TimeSpan)`; `Move? FindBestMove(GameState, CancellationToken)` is sync/blocking and internally serialized via `lock(_searchGate)`; only `NodesSearched` and `LastCompletedDepth` are exposed — **no LastSearch struct, no score, no elapsed, no RandomSeed (fully deterministic)**. Sole package: `System.Collections.Immutable` 10.0.7. `InternalsVisibleTo("JungleGame.Tests")` — keep assembly names unchanged. TT is 1M entries ≈ 50MB allocated at runtime.
+- **Engine API reality** (differs from the qwen engine the original prompt assumed): no `AiConfig` class — difficulty is `SetTimeLimit(TimeSpan)`; `Move? FindBestMove(GameState, CancellationToken)` is sync/blocking and internally serialized via `lock(_searchGate)`; only `NodesSearched` and `LastCompletedDepth` are exposed — **no LastSearch struct, no score, no elapsed, no RandomSeed (fully deterministic)**. Sole package: `System.Collections.Immutable` 10.0.7. `InternalsVisibleTo("JungleGame.Tests")` — keep assembly names unchanged. TT is 1M entries ≈ 50MB allocated at runtime. The ctor's `legacyEval`/`legacySearch`/`legacyP5` flags disable P3/P4/P5 features for A/B strength tests — see the engine-fork section below.
 - Only the presentation layer is rewritten: WPF Canvas code-behind → Blazor Razor components (CSS grid + inline SVG), and the desktop `MainViewModel` game-flow logic → a plain C# service (drop `INotifyPropertyChanged`/WPF plumbing). See `JungleGame.UI/ViewModels/MainViewModel.cs` `DoAIMove` in the desktop repo for the background-AI pattern: `await Task.Run(() => _ai.FindBestMove(_state, token), token)` + CTS staleness guard (`if (token.IsCancellationRequested) return;`).
 - **WASM threading is mandatory**: `<WasmEnableThreads>true</WasmEnableThreads>` (+ `RunAOT=true`, `EmccMaximumHeapSize=536870912`) so AI search runs on a real background thread without freezing the UI. Requires cross-origin isolation via COOP/COEP headers (see Deployment). The spec mandates a threading spike as the very first deliverable.
 - No bitmap/audio assets exist to reuse — the desktop renders everything procedurally. Recreate the visual design in CSS/SVG using `JungleGame.UI/Themes/Theme.xaml` (palette) + `Views/MainWindow.Rendering.cs` (composition) as the spec, and synthesize fresh sound effects.
+
+## Engine fork vs the desktop (P5)
+
+The engine was copied verbatim from `deepseek_cc_jungle`; this repository is the only place the **P5 candidate set** lives (the desktop's P3/P4 recorded results still apply). P5 = SEE capture ordering + losing-capture pruning in quiescence (`AI/SeeEvaluator.cs`), a counter-move heuristic, and three eval terms (Rat-den influence, front-trap guard, clear-jump-lane bonus), all gated by the ctor `legacyP5` flag and Bench `--legacyP5B`/`--legacyP5A`. Protocol: same time for both sides, B on the legacy (pre-P5) set; accept a change when A wins ≥ 55% of decisive games; failed candidates are reverted before merge (like the desktop's dropped P4 terms). Do not "fix" the root window and do not re-add the dropped P4 eval terms — the desktop's recorded results forbid both.
+
+Recorded results (A = P5 on, B = legacyP5):
+- TBD after gates (fill from Bench runs).
+
+Bench before/after (2 s from start): baseline 1,426,694 nodes / ~713k nps / depth 11; P5: TBD.
 
 ## Key behavioral constraints
 

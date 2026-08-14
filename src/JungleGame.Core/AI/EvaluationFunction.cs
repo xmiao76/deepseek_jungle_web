@@ -31,6 +31,9 @@ public static class EvaluationFunction
     private const int BackRankPenalty = 5;           // undeveloped piece on the home row
     private const int EndgamePieceCount = 8;         // endgame threshold (total pieces)
     private const int DevelopmentMaterialGate = 20;  // rank-sum gate for the back-rank penalty
+    private const int RatDenInfluenceWeight = 15;    // P5: per (3 - distToOppDen), Rat within 2 of the enemy den
+    private const int FrontTrapGuardWeight = 20;     // P5: our piece on the trap directly in front of our own den
+    private const int ClearJumpLaneBonus = 12;       // P5: Lion/Tiger with a rat-free jump to the enemy half
 
     // Positional bonuses: bonus for forward progression toward opponent's den
     // Blue advances toward high rows, Red toward low rows
@@ -89,15 +92,15 @@ public static class EvaluationFunction
     /// With legacyEval, the P3 terms (doomed-piece bonus, den escort) are disabled —
     /// used only by the self-play harness for A/B strength validation.
     /// </summary>
-    internal static int Evaluate(SearchBoard board, int side, int myMobility, int oppMobility, bool legacyEval = false)
-        => EvaluateStatic(board, side, legacyEval) + (myMobility - oppMobility) * MobilityWeight;
+    internal static int Evaluate(SearchBoard board, int side, int myMobility, int oppMobility, bool legacyEval = false, bool legacyP5 = false)
+        => EvaluateStatic(board, side, legacyEval, legacyP5) + (myMobility - oppMobility) * MobilityWeight;
 
     /// <summary>
     /// Everything <see cref="Evaluate"/> computes except the mobility term, which
     /// costs two move generations per call. Used for futility pruning at depth 1
     /// and for lazy mobility in the quiescence stand-pat.
     /// </summary>
-    internal static int EvaluateStatic(SearchBoard board, int side, bool legacyEval = false)
+    internal static int EvaluateStatic(SearchBoard board, int side, bool legacyEval = false, bool legacyP5 = false)
     {
         int score = 0;
 
@@ -135,7 +138,7 @@ public static class EvaluationFunction
             {
                 int sq = board.SquareOf(id);
                 bool ownDenThreatened = s == 0 ? blueDenThreatened : redDenThreatened;
-                int pieceScore = EvaluatePiece(board, id, sq, isEndgame, legacyEval, ownDenThreatened);
+                int pieceScore = EvaluatePiece(board, id, sq, isEndgame, legacyEval, legacyP5, ownDenThreatened);
                 score += s == side ? pieceScore : -pieceScore;
             }
         }
@@ -170,7 +173,7 @@ public static class EvaluationFunction
         return score;
     }
 
-    private static int EvaluatePiece(SearchBoard board, byte id, int sq, bool isEndgame, bool legacyEval, bool ownDenThreatened)
+    private static int EvaluatePiece(SearchBoard board, byte id, int sq, bool isEndgame, bool legacyEval, bool legacyP5, bool ownDenThreatened)
     {
         int rank = SearchBoard.RankOf[id];
         int owner = ((id - 1) % SearchBoard.DistinctPieceKinds) & 1;
@@ -184,6 +187,11 @@ public static class EvaluationFunction
 
         // Den proximity
         score += DenProximity(sq, owner);
+
+        // P5: guard the trap directly in front of our own den (Blue (3,1) = sq 10,
+        // Red (3,7) = sq 52) — the last line of defense against a den invasion.
+        if (!legacyP5 && sq == (owner == 0 ? 10 : 52))
+            score += FrontTrapGuardWeight;
 
         // Trap penalty: piece on enemy trap, plus a "doomed piece" bonus for the
         // opponent — a trapped piece can be captured by anything.
@@ -214,6 +222,11 @@ public static class EvaluationFunction
             int oppDenSq = owner == 0 ? 59 : 3; // (3,8) for Blue, (3,0) for Red
             if (HasRiverBetween(sq, oppDenSq))
                 score += JumpPathBonus; // Can potentially jump toward opponent's den
+
+            // P5: a precise, rat-free jump lane across the river onto the enemy half —
+            // stronger evidence of an open attack route than the geometric check above.
+            if (!legacyP5 && SearchBoard.HasClearJumpToEnemyHalf(board, id, sq))
+                score += ClearJumpLaneBonus;
         }
 
         // Rat near water bonus
@@ -223,6 +236,16 @@ public static class EvaluationFunction
                 score += RatNearWaterBonus;
             if (SearchBoard.TerrainOf[sq] == WaterTerrain)
                 score += RatInWaterBonus; // Rat in water disrupts enemy jump paths
+
+            // P5: a Rat closing in on the enemy den is a real invasion threat (the
+            // Rat is the only piece that can slip through water defenses).
+            if (!legacyP5)
+            {
+                int oppDenCol = 3, oppDenRow = owner == 0 ? 8 : 0;
+                int distToOppDen = Math.Abs(col - oppDenCol) + Math.Abs(row - oppDenRow);
+                if (distToOppDen <= 2)
+                    score += (3 - distToOppDen) * RatDenInfluenceWeight;
+            }
         }
 
         // Elephant safety: penalty for being near opponent's Rat

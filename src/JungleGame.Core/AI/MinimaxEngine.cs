@@ -14,6 +14,9 @@ public class MinimaxEngine
     private const int AspirationDelta = 25;
     private const int KillerBonus1 = 900;
     private const int KillerBonus2 = 800;
+    private const int CounterBonus1 = 700; // P5: between TT and killers
+    private const int CounterBonus2 = 600;
+    private const int CounterTableSize = 1 << 12; // packed from|(to<<6) fits 12 bits
     private const int FutilityMargin = 300;
     private const int DeltaMargin = 200;
 
@@ -21,9 +24,14 @@ public class MinimaxEngine
     private readonly int _maxDepth;
     private readonly bool _legacyEval;
     private readonly bool _legacySearch;
+    private readonly bool _legacyP5; // disables the P5 candidate set (SEE qsearch, counter-move, P5 eval terms)
     private readonly TranspositionTable _tt;
     private readonly int[,] _killerMoves;
     private readonly int[,] _historyTable;
+    private readonly int[] _counterMove0 = new int[CounterTableSize];
+    private readonly int[] _counterMove1 = new int[CounterTableSize];
+    private readonly int[] _prevMoveStack = new int[MaxPly]; // packed previous move per ply, -1 = none
+    private readonly int[] _qSeeScores = new int[MaxMovesPerPly]; // SEE scores parallel to _qMoves
     private readonly object _searchGate = new(); // serializes searches: one at a time per engine
 
     // Per-search scratch state (single-threaded; one search at a time)
@@ -37,17 +45,22 @@ public class MinimaxEngine
 
     /// <param name="legacyEval">Disables the P3 evaluation terms (A/B strength tests).</param>
     /// <param name="legacySearch">Disables the post-P3 search features (A/B strength tests).</param>
+    /// <param name="legacyP5">Disables the P5 candidate set — SEE capture ordering and
+    /// losing-capture pruning in quiescence, the counter-move heuristic, and the P5
+    /// evaluation terms (A/B strength tests).</param>
     public MinimaxEngine(
         TimeSpan? timeLimit = null,
         int? maxDepth = null,
         bool legacyEval = false,
-        bool legacySearch = false)
+        bool legacySearch = false,
+        bool legacyP5 = false)
     {
         _timeLimitTicks = (timeLimit ?? TimeSpan.FromSeconds(4)).Ticks;
         // PVSearch plus quiescence plies must fit inside the per-ply buffer tables
         _maxDepth = Math.Min(maxDepth ?? DefaultMaxDepth, MaxPly - 32);
         _legacyEval = legacyEval;
         _legacySearch = legacySearch;
+        _legacyP5 = legacyP5;
         _tt = new TranspositionTable(1 << 20);
         _killerMoves = new int[MaxPly, 2];
         _historyTable = new int[Zobrist.PositionCount, Zobrist.PositionCount];
@@ -135,7 +148,7 @@ public class MinimaxEngine
                 retry = false;
                 currentBest = int.MinValue;
 
-                OrderMoves(root, _rootMoves, moveCount, bestMoveForOrdering, 0);
+                OrderMoves(root, _rootMoves, moveCount, bestMoveForOrdering, 0, -1);
 
                 for (int i = 0; i < moveCount; i++)
                 {
@@ -146,6 +159,8 @@ public class MinimaxEngine
                     var child = GetBoard();
                     root.CopyTo(child);
                     child.ApplyMove(move);
+                    if (!_legacyP5)
+                        _prevMoveStack[0] = move.From | (move.To << 6);
 
                     int score;
                     if (i == 0)
@@ -245,6 +260,10 @@ public class MinimaxEngine
         {
             const int nullReduction = 2;
             board.MakeNullMove();
+            // Null moves never create counter-move pairs: clear the slot so the child
+            // sees "no previous move" instead of a stale value from a sibling node.
+            if (!_legacyP5)
+                _prevMoveStack[ply] = -1;
             int nullScore = -PVSearch(board, depth - 1 - nullReduction, -beta, -(beta - 1), ply + 1, sw, token);
             board.UnmakeNullMove();
             if (Aborted(sw, token))
@@ -275,7 +294,10 @@ public class MinimaxEngine
         if (moveCount == 0)
             return -(MateScore - ply);
 
-        OrderMoves(board, moves, moveCount, ttMove, ply);
+        // Packed previous move for the counter-move heuristic (P5); -1 at the root's
+        // first ply (game history stores hashes, not moves).
+        int prevPacked = !_legacyP5 && ply > 0 ? _prevMoveStack[ply - 1] : -1;
+        OrderMoves(board, moves, moveCount, ttMove, ply, prevPacked);
 
         SearchMove bestMove = moves[0];
         int bestScore = int.MinValue;
@@ -320,6 +342,8 @@ public class MinimaxEngine
             var child = GetBoard();
             board.CopyTo(child);
             child.ApplyMove(move);
+            if (!_legacyP5)
+                _prevMoveStack[ply] = move.From | (move.To << 6);
 
             int score;
             if (i == 0)
@@ -366,6 +390,11 @@ public class MinimaxEngine
                     _killerMoves[ply, 1] = _killerMoves[ply, 0];
                     _killerMoves[ply, 0] = packed;
                     _historyTable[move.From, move.To] += depth * depth;
+                    if (!_legacyP5 && prevPacked >= 0)
+                    {
+                        _counterMove1[prevPacked] = _counterMove0[prevPacked];
+                        _counterMove0[prevPacked] = packed;
+                    }
                 }
 
                 if (!_aborted)
@@ -448,8 +477,13 @@ public class MinimaxEngine
         var moves = _qMoves[ply];
         int moveCount = board.GenerateCaptures(side, moves);
 
-        // Order captures by MVV-LVA; den entries (no victim) rank above every capture
-        SortCaptures(board, moves, moveCount);
+        // P5: order captures by static exchange value (more accurate than MVV-LVA);
+        // den entries rank above every capture and are never SEE-pruned. The legacy
+        // MVV-LVA path stays for A/B gates (--legacyP5B).
+        if (!_legacyP5)
+            OrderCapturesBySee(board, moves, moveCount);
+        else
+            SortCaptures(board, moves, moveCount);
 
         for (int i = 0; i < moveCount; i++)
         {
@@ -469,6 +503,14 @@ public class MinimaxEngine
                 if (standPat + victimGain + DeltaMargin <= alpha)
                     continue;
             }
+
+            // P5: skip strictly losing exchanges — they cannot beat the stand-pat
+            // floor. Captures landing on an enemy trap are exempt: the trap zeroes
+            // our piece, so the opponent's recapture is guaranteed and the plain
+            // SEE recursion mis-evaluates that line. Den entries are not captures.
+            if (!_legacyP5 && move.IsCapture && _qSeeScores[i] < 0
+                && !SearchBoard.IsEnemyTrapSquare(move.To, side))
+                continue;
 
             var child = GetBoard();
             board.CopyTo(child);
@@ -528,7 +570,7 @@ public class MinimaxEngine
 
     // ---- Move ordering ----
 
-    private int MoveScore(SearchBoard board, in SearchMove move, Move ttMove, int ply)
+    private int MoveScore(SearchBoard board, in SearchMove move, Move ttMove, int ply, int prevPacked)
     {
         if (ttMove.From.Row * 7 + ttMove.From.Col == move.From &&
             ttMove.To.Row * 7 + ttMove.To.Col == move.To)
@@ -543,15 +585,25 @@ public class MinimaxEngine
         }
 
         int score = 0;
+        int packed = move.From | (move.To << 6);
 
         // Killer move heuristic (full from|to move)
         if (ply < MaxPly)
         {
-            int packed = move.From | (move.To << 6);
             if (packed == _killerMoves[ply, 0])
                 score = KillerBonus1;
             else if (packed == _killerMoves[ply, 1])
                 score = KillerBonus2;
+        }
+
+        // Counter-move heuristic (P5): quiet replies that refuted this exact previous
+        // move get a bonus between the killers and the history floor.
+        if (!_legacyP5 && prevPacked >= 0)
+        {
+            if (packed == _counterMove0[prevPacked])
+                score += CounterBonus1;
+            else if (packed == _counterMove1[prevPacked])
+                score += CounterBonus2;
         }
 
         // History heuristic bonus
@@ -560,14 +612,14 @@ public class MinimaxEngine
     }
 
     /// <summary>Insertion sort by move score (n is small and nearly sorted after iteration 1).</summary>
-    private void OrderMoves(SearchBoard board, SearchMove[] moves, int count, Move ttMove, int ply)
+    private void OrderMoves(SearchBoard board, SearchMove[] moves, int count, Move ttMove, int ply, int prevPacked)
     {
         for (int i = 1; i < count; i++)
         {
             var move = moves[i];
-            int score = MoveScore(board, move, ttMove, ply);
+            int score = MoveScore(board, move, ttMove, ply, prevPacked);
             int j = i - 1;
-            while (j >= 0 && MoveScore(board, moves[j], ttMove, ply) < score)
+            while (j >= 0 && MoveScore(board, moves[j], ttMove, ply, prevPacked) < score)
             {
                 moves[j + 1] = moves[j];
                 j--;
@@ -597,6 +649,38 @@ public class MinimaxEngine
         int victimRank = move.IsCapture ? SearchBoard.RankOf[move.CapturedId] : 9; // den entries rank first
         int attackerRank = SearchBoard.RankOf[board.Occupant(move.From)];
         return victimRank * 10 - attackerRank;
+    }
+
+    /// <summary>
+    /// P5 quiescence ordering: insertion sort by SEE value. Den entries get the
+    /// sentinel int.MaxValue (first, never pruned); the parallel <see cref="_qSeeScores"/>
+    /// array stays aligned with the sorted moves so the pruning step can read the score.
+    /// </summary>
+    private void OrderCapturesBySee(SearchBoard board, SearchMove[] moves, int count)
+    {
+        int side = board.Turn;
+        for (int i = 0; i < count; i++)
+        {
+            var move = moves[i];
+            _qSeeScores[i] = move.IsCapture
+                ? SeeEvaluator.See(board, board.Occupant(move.From), move.CapturedId, move.To)
+                : int.MaxValue;
+        }
+
+        for (int i = 1; i < count; i++)
+        {
+            var move = moves[i];
+            int score = _qSeeScores[i];
+            int j = i - 1;
+            while (j >= 0 && _qSeeScores[j] < score)
+            {
+                _qSeeScores[j + 1] = _qSeeScores[j];
+                moves[j + 1] = moves[j];
+                j--;
+            }
+            _qSeeScores[j + 1] = score;
+            moves[j + 1] = move;
+        }
     }
 
     // ---- Board pool and conversion ----
