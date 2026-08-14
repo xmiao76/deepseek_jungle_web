@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build (Release)
+        run: dotnet build JungleGame.sln -c Release
+
+      - name: Run engine/AI test suite
+        run: dotnet test JungleGame.sln -c Release --no-build --logger "console;verbosity=normal"
+
+      - name: Coverage gate (Core line coverage >= 80%)
+        run: |
+          dotnet test tests/JungleGame.Tests -c Release --no-build --collect:"XPlat Code Coverage"
+          pwsh -File scripts/check-coverage.ps1
+
+      - name: Engine crash smoke (self-play)
+        run: dotnet run --project src/JungleGame.Bench -c Release --no-build -- --selfplay --games 2 --timeA 1000 --timeB 300
