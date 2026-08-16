@@ -115,7 +115,7 @@ public class EvaluationTests
         int v2 = EvaluationFunction.Evaluate(board, 0, board.CountLegalMoves(0), board.CountLegalMoves(1), legacyEval: false);
         int legacy = EvaluationFunction.Evaluate(board, 0, board.CountLegalMoves(0), board.CountLegalMoves(1), legacyEval: true);
 
-        Assert.Equal(legacy + 30, v2);
+        Assert.Equal(legacy + EvalParameters.Default.DenEscortBonus, v2);
     }
 
     [Fact]
@@ -138,7 +138,7 @@ public class EvaluationTests
 
         // Blue's pieces get no escort bonus (Red threatens nothing near Blue's den),
         // but Red's guarding Lion does: -30 from Blue's perspective
-        Assert.Equal(legacy - 30, v2);
+        Assert.Equal(legacy - EvalParameters.Default.DenEscortBonus, v2);
     }
 
     [Fact]
@@ -159,6 +159,6 @@ public class EvaluationTests
         int v2 = EvaluationFunction.Evaluate(board, 0, board.CountLegalMoves(0), board.CountLegalMoves(1), legacyEval: false);
         int legacy = EvaluationFunction.Evaluate(board, 0, board.CountLegalMoves(0), board.CountLegalMoves(1), legacyEval: true);
 
-        Assert.Equal(legacy + 40, v2);
+        Assert.Equal(legacy + EvalParameters.Default.DoomedPieceWeightPerRank * 8, v2);
     }
 }

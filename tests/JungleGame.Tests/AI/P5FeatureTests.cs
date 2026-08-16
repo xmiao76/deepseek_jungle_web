@@ -45,7 +45,7 @@ public class P5FeatureTests
 
         var (p5, legacy) = EvaluatePair(state);
 
-        Assert.Equal(legacy + 15, p5);
+        Assert.Equal(legacy + EvalParameters.Default.RatDenInfluenceWeight, p5);
     }
 
     [Fact]
@@ -60,7 +60,7 @@ public class P5FeatureTests
 
         var (p5, legacy) = EvaluatePair(state);
 
-        Assert.Equal(legacy + 20, p5);
+        Assert.Equal(legacy + EvalParameters.Default.FrontTrapGuardWeight, p5);
     }
 
     [Fact]
@@ -77,7 +77,7 @@ public class P5FeatureTests
 
         var (p5, legacy) = EvaluatePair(state);
 
-        Assert.Equal(legacy + 12, p5);
+        Assert.Equal(legacy + EvalParameters.Default.ClearJumpLaneWeight, p5);
     }
 
     [Fact]
