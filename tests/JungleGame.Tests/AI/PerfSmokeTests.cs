@@ -8,9 +8,9 @@ namespace JungleGame.Tests.AI;
 /// Performance gates, tagged [Trait("Category","Perf")] for opt-in runs via
 /// `dotnet test --filter "Category=Perf"`. The collection below disables
 /// parallelization so the gates are not skewed by CPU contention from other
-/// test classes. Calibrated on a Debug build: ~250k nodes/s and depth 8 in 2s
-/// from the start position; the pre-SearchBoard engine managed roughly
-/// 5-15k nodes/s, so both gates fail the old implementation by a wide margin.
+/// test classes. Recalibrated on a Debug build after the P2 speed overhaul
+/// (make-unmake): ~245k nodes/s and depth 10 in 2s from the start position;
+/// the floors keep headroom for slow CI runners.
 /// </summary>
 [CollectionDefinition("Perf", DisableParallelization = true)]
 public class PerfCollection { }
@@ -26,8 +26,8 @@ public class PerfSmokeTests
         engine.FindBestMove(GameState.CreateInitial());
 
         Assert.True(
-            engine.NodesSearched >= 100_000,
-            $"Only {engine.NodesSearched} nodes searched in 1s (floor: 100,000)");
+            engine.NodesSearched >= 150_000,
+            $"Only {engine.NodesSearched} nodes searched in 1s (floor: 150,000)");
     }
 
     [Fact]
@@ -37,7 +37,7 @@ public class PerfSmokeTests
         engine.FindBestMove(GameState.CreateInitial());
 
         Assert.True(
-            engine.LastCompletedDepth >= 7,
-            $"Only reached depth {engine.LastCompletedDepth} in 2s (floor: 7)");
+            engine.LastCompletedDepth >= 8,
+            $"Only reached depth {engine.LastCompletedDepth} in 2s (floor: 8)");
     }
 }

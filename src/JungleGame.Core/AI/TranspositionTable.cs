@@ -77,7 +77,7 @@ public class TranspositionTable
 
     public void Store(ulong hash, int depth, int score, Move bestMove, BoundType bound)
     {
-        int baseIdx = (int)(hash % (ulong)_slotCount) * BucketCount;
+        int baseIdx = (int)(hash & (ulong)(_slotCount - 1)) * BucketCount; // _slotCount is a power of two
 
         // Same hash: update in place (keeps the newest information for the position)
         for (int i = 0; i < BucketCount; i++)
@@ -113,7 +113,7 @@ public class TranspositionTable
 
     public bool TryProbe(ulong hash, int depth, int alpha, int beta, int ply, out int score, out Move bestMove)
     {
-        int baseIdx = (int)(hash % (ulong)_slotCount) * BucketCount;
+        int baseIdx = (int)(hash & (ulong)(_slotCount - 1)) * BucketCount; // _slotCount is a power of two
 
         score = 0;
         bestMove = default;

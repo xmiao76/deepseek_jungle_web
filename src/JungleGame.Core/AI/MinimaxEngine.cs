@@ -12,39 +12,32 @@ public class MinimaxEngine
     private const int MaxPly = 64;
     private const int MaxMovesPerPly = SearchBoard.MaxMovesPerPly;
     private const int AspirationDelta = 25;
-    private const int KillerBonus1 = 900;
-    private const int KillerBonus2 = 800;
-    private const int CounterBonus1 = 700; // P5: between TT and killers
-    private const int CounterBonus2 = 600;
     private const int CounterTableSize = 1 << 12; // packed from|(to<<6) fits 12 bits
     private const int FutilityMargin = 300;
     private const int DeltaMargin = 200;
 
-    private long _timeLimitTicks; // accessed via Interlocked (SetTimeLimit may race a running search)
+    private readonly TimeManager _time;
     private readonly int _maxDepth;
     private readonly bool _legacyEval;
     private readonly bool _legacySearch;
     private readonly bool _legacyP5; // disables the P5 candidate set (SEE qsearch, counter-move, P5 eval terms)
     internal readonly bool _useTablebase; // reserved (wired in the tablebase phase)
     internal readonly int _contempt;      // reserved (wired in the time-management phase)
-    internal readonly long? _maxNodes;    // reserved (wired in the time-management phase)
     private readonly TranspositionTable _tt;
     private readonly int[,] _killerMoves;
     private readonly int[,] _historyTable;
     private readonly int[] _counterMove0 = new int[CounterTableSize];
     private readonly int[] _counterMove1 = new int[CounterTableSize];
     private readonly int[] _prevMoveStack = new int[MaxPly]; // packed previous move per ply, -1 = none
-    private readonly int[] _qSeeScores = new int[MaxMovesPerPly]; // SEE scores parallel to _qMoves
     private readonly object _searchGate = new(); // serializes searches: one at a time per engine
+    private readonly MoveOrdering _order;
+    private readonly RepetitionTable _repetitions = new();
+    private readonly SearchBoard _board = new(); // the single search board (make/unmake)
 
     // Per-search scratch state (single-threaded; one search at a time)
-    private bool _aborted;
-    private readonly Stack<SearchBoard> _boardPool = new();
     private readonly SearchMove[][] _plyMoves;   // PVSearch buffers, one per ply
     private readonly SearchMove[][] _qMoves;     // quiescence buffers, one per ply
     private readonly SearchMove[] _rootMoves = new SearchMove[MaxMovesPerPly];
-    private readonly ulong[] _pathHashes = new ulong[256];
-    private int _pathLen;
 
     /// <param name="legacyEval">Disables the P3 evaluation terms (A/B strength tests).</param>
     /// <param name="legacySearch">Disables the post-P3 search features (A/B strength tests).</param>
@@ -53,7 +46,8 @@ public class MinimaxEngine
     /// evaluation terms (A/B strength tests).</param>
     /// <param name="useTablebase">Reserved for the tablebase phase; no behavior yet.</param>
     /// <param name="contempt">Reserved for the time-management phase; no behavior yet.</param>
-    /// <param name="maxNodes">Reserved for the time-management phase; no behavior yet.</param>
+    /// <param name="maxNodes">Optional fixed-node budget per search (0/unlimited by default;
+    /// used by deterministic tests).</param>
     public MinimaxEngine(
         TimeSpan? timeLimit = null,
         int? maxDepth = null,
@@ -64,7 +58,7 @@ public class MinimaxEngine
         int contempt = 30,
         long? maxNodes = null)
     {
-        _timeLimitTicks = (timeLimit ?? TimeSpan.FromSeconds(4)).Ticks;
+        _time = new TimeManager(timeLimit ?? TimeSpan.FromSeconds(4));
         // PVSearch plus quiescence plies must fit inside the per-ply buffer tables
         _maxDepth = Math.Min(maxDepth ?? DefaultMaxDepth, MaxPly - 32);
         _legacyEval = legacyEval;
@@ -72,7 +66,8 @@ public class MinimaxEngine
         _legacyP5 = legacyP5;
         _useTablebase = useTablebase;
         _contempt = contempt;
-        _maxNodes = maxNodes;
+        if (maxNodes.HasValue)
+            _time.SetNodeBudget(maxNodes.Value);
         _tt = new TranspositionTable(1 << 20);
         _killerMoves = new int[MaxPly, 2];
         _historyTable = new int[Zobrist.PositionCount, Zobrist.PositionCount];
@@ -83,6 +78,7 @@ public class MinimaxEngine
             _plyMoves[i] = new SearchMove[MaxMovesPerPly];
             _qMoves[i] = new SearchMove[MaxMovesPerPly];
         }
+        _order = new MoveOrdering(_killerMoves, _historyTable, _counterMove0, _counterMove1, legacyP5);
     }
 
     public long NodesSearched { get; private set; }
@@ -93,8 +89,7 @@ public class MinimaxEngine
     /// new limit at its next check; the transposition table is kept, so strength
     /// carries over between games and difficulty changes.
     /// </summary>
-    public void SetTimeLimit(TimeSpan timeLimit) =>
-        Interlocked.Exchange(ref _timeLimitTicks, timeLimit.Ticks);
+    public void SetTimeLimit(TimeSpan timeLimit) => _time.SetTimeLimit(timeLimit);
 
     /// <summary>
     /// Searches for the best move. Returns null if the game is already over or the
@@ -117,18 +112,21 @@ public class MinimaxEngine
         if (state.Status != GameStatus.InProgress)
             return null;
 
-        _aborted = false;
+        _time.Reset();
+        _repetitions.Reset();
         NodesSearched = 0;
         LastCompletedDepth = 0;
         var sw = Stopwatch.StartNew();
 
-        var root = SearchBoard.FromGameState(state);
+        // The single search board is rebuilt from the game state at the start of
+        // every search (an aborted search can leave it mid-tree); make/unmake
+        // restores it to the root position after every completed child search.
+        var root = _board;
+        root.CopyFromGameState(state);
 
         // Seed the repetition path with the real game's history, reserving headroom
         // for the search path itself (long shuffling games can approach the cap)
-        _pathLen = Math.Min(state.History.Count, _pathHashes.Length - MaxPly);
-        for (int i = 0; i < _pathLen; i++)
-            _pathHashes[i] = state.History[i];
+        _repetitions.SeedPath(state);
 
         int side = (int)state.CurrentTurn;
         int moveCount = root.GenerateMoves(side, _rootMoves);
@@ -143,7 +141,7 @@ public class MinimaxEngine
 
         for (int depth = 1; depth <= _maxDepth; depth++)
         {
-            if (Aborted(sw, token))
+            if (_time.Check(sw, token))
                 break;
 
             int currentBest = int.MinValue;
@@ -160,17 +158,15 @@ public class MinimaxEngine
                 retry = false;
                 currentBest = int.MinValue;
 
-                OrderMoves(root, _rootMoves, moveCount, bestMoveForOrdering, 0, -1);
+                _order.OrderMoves(root, _rootMoves, moveCount, bestMoveForOrdering, 0, -1);
 
                 for (int i = 0; i < moveCount; i++)
                 {
-                    if (Aborted(sw, token))
+                    if (_time.Check(sw, token))
                         break;
 
                     var move = _rootMoves[i];
-                    var child = GetBoard();
-                    root.CopyTo(child);
-                    child.ApplyMove(move);
+                    var undo = root.MakeMove(move);
                     if (!_legacyP5)
                         _prevMoveStack[0] = move.From | (move.To << 6);
 
@@ -183,15 +179,15 @@ public class MinimaxEngine
                         // results): with proper cutoffs, the narrow aspiration
                         // window stores bound entries that steer later searches
                         // toward repetition lines in equal positions.
-                        score = -PVSearch(child, depth - 1, searchAlpha, searchBeta, 1, sw, token);
+                        score = -PVSearch(root, depth - 1, searchAlpha, searchBeta, 1, sw, token);
                     else
                     {
-                        score = -PVSearch(child, depth - 1, -(currentBest + 1), -currentBest, 1, sw, token);
+                        score = -PVSearch(root, depth - 1, -(currentBest + 1), -currentBest, 1, sw, token);
                         if (score > currentBest)
-                            score = -PVSearch(child, depth - 1, -searchBeta, -currentBest, 1, sw, token);
+                            score = -PVSearch(root, depth - 1, -searchBeta, -currentBest, 1, sw, token);
                     }
 
-                    ReleaseBoard(child);
+                    root.UnmakeMove(move, undo);
 
                     if (score > currentBest)
                     {
@@ -200,7 +196,7 @@ public class MinimaxEngine
                     }
                 }
 
-                if (!Aborted(sw, token) && (currentBest <= searchAlpha || currentBest >= searchBeta))
+                if (!_time.Check(sw, token) && (currentBest <= searchAlpha || currentBest >= searchBeta))
                 {
                     // Failed low/high: widen the window to full width and try the
                     // depth again (incremental widening was tried and reverted —
@@ -212,10 +208,10 @@ public class MinimaxEngine
                     retry = true;
                 }
             }
-            while (retry && !Aborted(sw, token));
+            while (retry && !_time.Check(sw, token));
 
             // Only accept results from fully completed depths
-            if (!Aborted(sw, token))
+            if (!_time.Check(sw, token))
             {
                 bestScore = currentBest;
                 bestMove = currentBestMove;
@@ -235,11 +231,8 @@ public class MinimaxEngine
     private int PVSearch(SearchBoard board, int depth, int alpha, int beta, int ply, Stopwatch sw, CancellationToken token)
     {
         NodesSearched++;
-        if (Aborted(sw, token))
-        {
-            _aborted = true;
+        if (_time.Check(sw, token))
             return 0;
-        }
 
         // Game ended by the previously applied move
         if (board.WinnerSide != SearchBoard.NoWinner)
@@ -247,7 +240,7 @@ public class MinimaxEngine
 
         // Three-fold repetition → draw (checked before the TT probe: the hash carries
         // no repetition state, so a probed score would mask the draw)
-        if (IsPathRepetition(board.Hash))
+        if (_repetitions.IsRepetition(board.Hash))
             return 0;
 
         // TT probe
@@ -278,22 +271,16 @@ public class MinimaxEngine
                 _prevMoveStack[ply] = -1;
             int nullScore = -PVSearch(board, depth - 1 - nullReduction, -beta, -(beta - 1), ply + 1, sw, token);
             board.UnmakeNullMove();
-            if (Aborted(sw, token))
-            {
-                _aborted = true;
+            if (_time.Check(sw, token))
                 return 0;
-            }
 
             if (nullScore >= beta)
             {
                 // Verification: a reduced-depth real search of this node must
                 // confirm the cutoff (catches zugzwang the guards missed)
                 int verifyScore = PVSearch(board, depth - 1 - nullReduction, alpha, beta, ply, sw, token);
-                if (Aborted(sw, token))
-                {
-                    _aborted = true;
+                if (_time.Check(sw, token))
                     return 0;
-                }
                 if (verifyScore >= beta)
                     return beta;
             }
@@ -309,7 +296,7 @@ public class MinimaxEngine
         // Packed previous move for the counter-move heuristic (P5); -1 at the root's
         // first ply (game history stores hashes, not moves).
         int prevPacked = !_legacyP5 && ply > 0 ? _prevMoveStack[ply - 1] : -1;
-        OrderMoves(board, moves, moveCount, ttMove, ply, prevPacked);
+        _order.OrderMoves(board, moves, moveCount, ttMove, ply, prevPacked);
 
         SearchMove bestMove = moves[0];
         int bestScore = int.MinValue;
@@ -328,16 +315,15 @@ public class MinimaxEngine
             staticEval = EvaluationFunction.EvaluateStatic(board, side, _legacyEval, _legacyP5);
 
         // Push the position onto the repetition path (skip if the stack is full)
-        bool pathPushed = _pathLen < _pathHashes.Length;
+        bool pathPushed = _repetitions.CanPush;
         if (pathPushed)
-            _pathHashes[_pathLen++] = board.Hash;
+            _repetitions.Push(board.Hash);
 
         for (int i = 0; i < moveCount; i++)
         {
-            if (Aborted(sw, token))
+            if (_time.Check(sw, token))
             {
                 // A partially searched node must not store anything in the TT
-                _aborted = true;
                 break;
             }
 
@@ -351,15 +337,13 @@ public class MinimaxEngine
 
             anySearched = true;
 
-            var child = GetBoard();
-            board.CopyTo(child);
-            child.ApplyMove(move);
+            var undo = board.MakeMove(move);
             if (!_legacyP5)
                 _prevMoveStack[ply] = move.From | (move.To << 6);
 
             int score;
             if (i == 0)
-                score = -PVSearch(child, depth - 1, -beta, -alpha, ply + 1, sw, token);
+                score = -PVSearch(board, depth - 1, -beta, -alpha, ply + 1, sw, token);
             else if (i >= 3 && depth >= 3 && !move.IsCapture)
             {
                 // Late move reduction: quiet moves late in the order are searched
@@ -371,20 +355,20 @@ public class MinimaxEngine
                     ? Math.Max(1, depth - 1 - (1 + (i >= 6 ? 1 : 0) + (depth >= 8 ? 1 : 0)))
                     : depth - 2;
 
-                score = -PVSearch(child, reducedDepth, -(alpha + 1), -alpha, ply + 1, sw, token);
+                score = -PVSearch(board, reducedDepth, -(alpha + 1), -alpha, ply + 1, sw, token);
                 if (score > alpha)
-                    score = -PVSearch(child, depth - 1, -(alpha + 1), -alpha, ply + 1, sw, token);
+                    score = -PVSearch(board, depth - 1, -(alpha + 1), -alpha, ply + 1, sw, token);
                 if (score > alpha && score < beta)
-                    score = -PVSearch(child, depth - 1, -beta, -alpha, ply + 1, sw, token);
+                    score = -PVSearch(board, depth - 1, -beta, -alpha, ply + 1, sw, token);
             }
             else
             {
-                score = -PVSearch(child, depth - 1, -(alpha + 1), -alpha, ply + 1, sw, token);
+                score = -PVSearch(board, depth - 1, -(alpha + 1), -alpha, ply + 1, sw, token);
                 if (score > alpha && score < beta)
-                    score = -PVSearch(child, depth - 1, -beta, -alpha, ply + 1, sw, token);
+                    score = -PVSearch(board, depth - 1, -beta, -alpha, ply + 1, sw, token);
             }
 
-            ReleaseBoard(child);
+            board.UnmakeMove(move, undo);
 
             if (score > bestScore)
             {
@@ -396,7 +380,7 @@ public class MinimaxEngine
             {
                 // Beta cutoff — this is a lower bound. Heuristic tables and the TT
                 // must not be touched by scores from aborted searches.
-                if (!move.IsCapture && ply < MaxPly && !_aborted)
+                if (!move.IsCapture && ply < MaxPly && !_time.Aborted)
                 {
                     int packed = move.From | (move.To << 6);
                     _killerMoves[ply, 1] = _killerMoves[ply, 0];
@@ -409,11 +393,11 @@ public class MinimaxEngine
                     }
                 }
 
-                if (!_aborted)
+                if (!_time.Aborted)
                     _tt.Store(board.Hash, depth, AdjustMateForStore(score, ply),
                         ToPublicMove(move), BoundType.LowerBound);
                 if (pathPushed)
-                    _pathLen--;
+                    _repetitions.Pop(board.Hash);
                 return score;
             }
 
@@ -425,19 +409,19 @@ public class MinimaxEngine
         }
 
         if (pathPushed)
-            _pathLen--;
+            _repetitions.Pop(board.Hash);
 
         // Every move was pruned by futility: return the static evaluation (a
         // fail-low value). Returning int.MinValue here would overflow when
         // negated by the parent and turn the line into a phantom blunder.
-        if (!anySearched && !_aborted)
+        if (!anySearched && !_time.Aborted)
             return staticEval;
 
         // An abort between the top-of-function check and the first completed
         // move leaves bestScore at int.MinValue, which would wrap on negation
         // in the parent; return a neutral value instead (the abort flag already
         // prevents any TT store and root acceptance)
-        if (_aborted)
+        if (_time.Aborted)
             return 0;
 
         // A partially searched node must not pollute the table
@@ -449,11 +433,8 @@ public class MinimaxEngine
     private int QuiescenceSearch(SearchBoard board, int alpha, int beta, int ply, Stopwatch sw, CancellationToken token)
     {
         NodesSearched++;
-        if (Aborted(sw, token))
-        {
-            _aborted = true;
+        if (_time.Check(sw, token))
             return 0;
-        }
 
         if (board.WinnerSide != SearchBoard.NoWinner)
             return TerminalScore(board.WinnerSide, board.Turn, ply);
@@ -493,17 +474,14 @@ public class MinimaxEngine
         // den entries rank above every capture and are never SEE-pruned. The legacy
         // MVV-LVA path stays for A/B gates (--legacyP5B).
         if (!_legacyP5)
-            OrderCapturesBySee(board, moves, moveCount);
+            _order.OrderCapturesBySee(board, moves, moveCount);
         else
-            SortCaptures(board, moves, moveCount);
+            _order.SortCaptures(board, moves, moveCount);
 
         for (int i = 0; i < moveCount; i++)
         {
-            if (Aborted(sw, token))
-            {
-                _aborted = true;
+            if (_time.Check(sw, token))
                 break;
-            }
 
             var move = moves[i];
 
@@ -520,16 +498,13 @@ public class MinimaxEngine
             // floor. Captures landing on an enemy trap are exempt: the trap zeroes
             // our piece, so the opponent's recapture is guaranteed and the plain
             // SEE recursion mis-evaluates that line. Den entries are not captures.
-            if (!_legacyP5 && move.IsCapture && _qSeeScores[i] < 0
+            if (!_legacyP5 && move.IsCapture && _order.SeeScores[i] < 0
                 && !SearchBoard.IsEnemyTrapSquare(move.To, side))
                 continue;
 
-            var child = GetBoard();
-            board.CopyTo(child);
-            child.ApplyMove(move);
-
-            int score = -QuiescenceSearch(child, -beta, -alpha, ply + 1, sw, token);
-            ReleaseBoard(child);
+            var undo = board.MakeMove(move);
+            int score = -QuiescenceSearch(board, -beta, -alpha, ply + 1, sw, token);
+            board.UnmakeMove(move, undo);
 
             if (score >= beta)
                 return beta;
@@ -541,23 +516,9 @@ public class MinimaxEngine
         return alpha;
     }
 
-    private bool Aborted(Stopwatch sw, CancellationToken token) =>
-        _aborted || sw.Elapsed.Ticks >= Interlocked.Read(ref _timeLimitTicks) || token.IsCancellationRequested;
-
     /// <summary>Score of a finished game, from the perspective of the side to move.</summary>
     private static int TerminalScore(byte winnerSide, int sideToMove, int ply) =>
         winnerSide == sideToMove ? MateScore - ply : ply - MateScore;
-
-    private bool IsPathRepetition(ulong hash)
-    {
-        int occurrences = 0;
-        for (int i = 0; i < _pathLen; i++)
-        {
-            if (_pathHashes[i] == hash && ++occurrences >= 2)
-                return true;
-        }
-        return false;
-    }
 
     /// <summary>
     /// Convert a root-relative mate score into a node-relative score before storing.
@@ -579,127 +540,6 @@ public class MinimaxEngine
             for (int t = 0; t < Zobrist.PositionCount; t++)
                 _historyTable[f, t] /= 2;
     }
-
-    // ---- Move ordering ----
-
-    private int MoveScore(SearchBoard board, in SearchMove move, Move ttMove, int ply, int prevPacked)
-    {
-        if (ttMove.From.Row * 7 + ttMove.From.Col == move.From &&
-            ttMove.To.Row * 7 + ttMove.To.Col == move.To)
-            return 1_000_000;
-
-        if (move.IsCapture)
-        {
-            // MVV-LVA ordering
-            int victimRank = SearchBoard.RankOf[move.CapturedId];
-            int attackerRank = SearchBoard.RankOf[board.Occupant(move.From)];
-            return victimRank * 100 - attackerRank;
-        }
-
-        int score = 0;
-        int packed = move.From | (move.To << 6);
-
-        // Killer move heuristic (full from|to move)
-        if (ply < MaxPly)
-        {
-            if (packed == _killerMoves[ply, 0])
-                score = KillerBonus1;
-            else if (packed == _killerMoves[ply, 1])
-                score = KillerBonus2;
-        }
-
-        // Counter-move heuristic (P5): quiet replies that refuted this exact previous
-        // move get a bonus between the killers and the history floor.
-        if (!_legacyP5 && prevPacked >= 0)
-        {
-            if (packed == _counterMove0[prevPacked])
-                score += CounterBonus1;
-            else if (packed == _counterMove1[prevPacked])
-                score += CounterBonus2;
-        }
-
-        // History heuristic bonus
-        score += Math.Min(_historyTable[move.From, move.To], 500);
-        return score;
-    }
-
-    /// <summary>Insertion sort by move score (n is small and nearly sorted after iteration 1).</summary>
-    private void OrderMoves(SearchBoard board, SearchMove[] moves, int count, Move ttMove, int ply, int prevPacked)
-    {
-        for (int i = 1; i < count; i++)
-        {
-            var move = moves[i];
-            int score = MoveScore(board, move, ttMove, ply, prevPacked);
-            int j = i - 1;
-            while (j >= 0 && MoveScore(board, moves[j], ttMove, ply, prevPacked) < score)
-            {
-                moves[j + 1] = moves[j];
-                j--;
-            }
-            moves[j + 1] = move;
-        }
-    }
-
-    private static void SortCaptures(SearchBoard board, SearchMove[] moves, int count)
-    {
-        for (int i = 1; i < count; i++)
-        {
-            var move = moves[i];
-            int score = CaptureScore(board, move);
-            int j = i - 1;
-            while (j >= 0 && CaptureScore(board, moves[j]) < score)
-            {
-                moves[j + 1] = moves[j];
-                j--;
-            }
-            moves[j + 1] = move;
-        }
-    }
-
-    private static int CaptureScore(SearchBoard board, in SearchMove move)
-    {
-        int victimRank = move.IsCapture ? SearchBoard.RankOf[move.CapturedId] : 9; // den entries rank first
-        int attackerRank = SearchBoard.RankOf[board.Occupant(move.From)];
-        return victimRank * 10 - attackerRank;
-    }
-
-    /// <summary>
-    /// P5 quiescence ordering: insertion sort by SEE value. Den entries get the
-    /// sentinel int.MaxValue (first, never pruned); the parallel <see cref="_qSeeScores"/>
-    /// array stays aligned with the sorted moves so the pruning step can read the score.
-    /// </summary>
-    private void OrderCapturesBySee(SearchBoard board, SearchMove[] moves, int count)
-    {
-        int side = board.Turn;
-        for (int i = 0; i < count; i++)
-        {
-            var move = moves[i];
-            _qSeeScores[i] = move.IsCapture
-                ? SeeEvaluator.See(board, board.Occupant(move.From), move.CapturedId, move.To)
-                : int.MaxValue;
-        }
-
-        for (int i = 1; i < count; i++)
-        {
-            var move = moves[i];
-            int score = _qSeeScores[i];
-            int j = i - 1;
-            while (j >= 0 && _qSeeScores[j] < score)
-            {
-                _qSeeScores[j + 1] = _qSeeScores[j];
-                moves[j + 1] = moves[j];
-                j--;
-            }
-            _qSeeScores[j + 1] = score;
-            moves[j + 1] = move;
-        }
-    }
-
-    // ---- Board pool and conversion ----
-
-    private SearchBoard GetBoard() => _boardPool.Count > 0 ? _boardPool.Pop() : new SearchBoard();
-
-    private void ReleaseBoard(SearchBoard board) => _boardPool.Push(board);
 
     private static Move ToPublicMove(in SearchMove move)
     {

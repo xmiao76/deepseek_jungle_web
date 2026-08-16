@@ -302,6 +302,25 @@ internal sealed class SearchBoard
     public static SearchBoard FromGameState(GameState state)
     {
         var board = new SearchBoard();
+        board.CopyFromGameState(state);
+        return board;
+    }
+
+    /// <summary>
+    /// Loads a GameState into this instance (the engine reuses one board across a
+    /// search via make/unmake, so every field must be reset — including the winner
+    /// side, which a previous aborted search may have left set).
+    /// </summary>
+    public void CopyFromGameState(GameState state)
+    {
+        Array.Clear(_squareIds, 0, SquareCount);
+        Array.Clear(_posOf, 0, MaxPieceIds + 1);
+        Array.Clear(_ids[0], 0, 16);
+        Array.Clear(_ids[1], 0, 16);
+        _count[0] = 0;
+        _count[1] = 0;
+        _winnerSide = NoWinner;
+
         var copies = new byte[DistinctPieceKinds];
         foreach (var kv in state.Pieces)
         {
@@ -314,13 +333,12 @@ internal sealed class SearchBoard
                     $"More than two {kv.Value.Owner} {kv.Value.Animal}s are not supported by the search engine.");
             byte id = (byte)(pieceIdx + 1 + (copies[pieceIdx]++ > 0 ? DistinctPieceKinds : 0));
             int side = (int)kv.Value.Owner;
-            board._squareIds[sq] = id;
-            board._posOf[id] = (byte)sq;
-            board._ids[side][board._count[side]++] = id;
+            _squareIds[sq] = id;
+            _posOf[id] = (byte)sq;
+            _ids[side][_count[side]++] = id;
         }
-        board._turn = (byte)(int)state.CurrentTurn;
-        board.Hash = Zobrist.ComputeHash(state);
-        return board;
+        _turn = (byte)(int)state.CurrentTurn;
+        Hash = Zobrist.ComputeHash(state);
     }
 
     /// <summary>Rebuilds the public immutable state (used by differential tests).</summary>
@@ -376,14 +394,42 @@ internal sealed class SearchBoard
     /// <summary>Undoes <see cref="MakeNullMove"/>.</summary>
     public void UnmakeNullMove() => MakeNullMove();
 
-    public void ApplyMove(in SearchMove m)
+    /// <summary>
+    /// Undo data for <see cref="MakeMove"/>/<see cref="UnmakeMove"/>: the index in
+    /// the opponent's piece-id list where the captured piece was swapped out, and
+    /// the winner side before the move (restored even when no capture happened).
+    /// </summary>
+    public readonly struct UndoInfo
+    {
+        public readonly byte CapturedSwapIndex;
+        public readonly byte PrevWinnerSide;
+
+        internal UndoInfo(byte capturedSwapIndex, byte prevWinnerSide)
+        {
+            CapturedSwapIndex = capturedSwapIndex;
+            PrevWinnerSide = prevWinnerSide;
+        }
+    }
+
+    public void ApplyMove(in SearchMove m) => MakeMove(m);
+
+    /// <summary>
+    /// Applies a move in place and returns the data <see cref="UnmakeMove"/> needs
+    /// to restore the board byte-identically. The capture swap-remove leaves the
+    /// tail slot of the opponent's id list untouched, so undo restores the exact
+    /// pre-move array order — which keeps move-generation order (and therefore the
+    /// whole deterministic search) bit-identical to the copy-make implementation.
+    /// </summary>
+    public UndoInfo MakeMove(in SearchMove m)
     {
         int side = _turn;
         byte id = _squareIds[m.From];
+        byte prevWinnerSide = _winnerSide;
 
         Hash ^= Zobrist.PieceKeys[m.From, ZobristIndex(id)];
         _squareIds[m.From] = 0;
 
+        byte capturedSwapIndex = 0;
         if (m.CapturedId != 0)
         {
             int opp = side ^ 1;
@@ -393,6 +439,7 @@ internal sealed class SearchBoard
                 if (_ids[opp][i] == m.CapturedId)
                 {
                     _ids[opp][i] = _ids[opp][c - 1];
+                    capturedSwapIndex = (byte)i;
                     break;
                 }
             }
@@ -413,6 +460,38 @@ internal sealed class SearchBoard
 
         Hash ^= Zobrist.TurnKey;
         _turn = (byte)(side ^ 1);
+
+        return new UndoInfo(capturedSwapIndex, prevWinnerSide);
+    }
+
+    /// <summary>Undoes <see cref="MakeMove"/>; the board must be in the post-move state.</summary>
+    public void UnmakeMove(in SearchMove m, in UndoInfo u)
+    {
+        int side = _turn ^ 1; // the side that made the move
+        byte id = _squareIds[m.To];
+
+        // Reverse the XOR sequence of MakeMove exactly
+        Hash ^= Zobrist.TurnKey;
+        _squareIds[m.To] = m.CapturedId != 0 ? m.CapturedId : (byte)0;
+        _posOf[id] = m.From;
+        Hash ^= Zobrist.PieceKeys[m.To, ZobristIndex(id)];
+
+        if (m.CapturedId != 0)
+        {
+            int opp = side ^ 1;
+            // MakeMove's swap-remove copied the tail value into the swap slot and
+            // left the tail slot untouched, so restoring the swap slot (and the
+            // count) recovers the exact pre-move id-list order.
+            _ids[opp][u.CapturedSwapIndex] = m.CapturedId;
+            _count[opp]++;
+            _posOf[m.CapturedId] = m.To;
+            Hash ^= Zobrist.PieceKeys[m.To, ZobristIndex(m.CapturedId)];
+        }
+
+        _squareIds[m.From] = id;
+        Hash ^= Zobrist.PieceKeys[m.From, ZobristIndex(id)];
+        _winnerSide = u.PrevWinnerSide;
+        _turn = (byte)side;
     }
 
     /// <summary>
