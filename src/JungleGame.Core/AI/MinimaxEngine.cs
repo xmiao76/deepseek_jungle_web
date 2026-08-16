@@ -25,6 +25,9 @@ public class MinimaxEngine
     private readonly bool _legacyEval;
     private readonly bool _legacySearch;
     private readonly bool _legacyP5; // disables the P5 candidate set (SEE qsearch, counter-move, P5 eval terms)
+    internal readonly bool _useTablebase; // reserved (wired in the tablebase phase)
+    internal readonly int _contempt;      // reserved (wired in the time-management phase)
+    internal readonly long? _maxNodes;    // reserved (wired in the time-management phase)
     private readonly TranspositionTable _tt;
     private readonly int[,] _killerMoves;
     private readonly int[,] _historyTable;
@@ -48,12 +51,18 @@ public class MinimaxEngine
     /// <param name="legacyP5">Disables the P5 candidate set — SEE capture ordering and
     /// losing-capture pruning in quiescence, the counter-move heuristic, and the P5
     /// evaluation terms (A/B strength tests).</param>
+    /// <param name="useTablebase">Reserved for the tablebase phase; no behavior yet.</param>
+    /// <param name="contempt">Reserved for the time-management phase; no behavior yet.</param>
+    /// <param name="maxNodes">Reserved for the time-management phase; no behavior yet.</param>
     public MinimaxEngine(
         TimeSpan? timeLimit = null,
         int? maxDepth = null,
         bool legacyEval = false,
         bool legacySearch = false,
-        bool legacyP5 = false)
+        bool legacyP5 = false,
+        bool useTablebase = true,
+        int contempt = 30,
+        long? maxNodes = null)
     {
         _timeLimitTicks = (timeLimit ?? TimeSpan.FromSeconds(4)).Ticks;
         // PVSearch plus quiescence plies must fit inside the per-ply buffer tables
@@ -61,6 +70,9 @@ public class MinimaxEngine
         _legacyEval = legacyEval;
         _legacySearch = legacySearch;
         _legacyP5 = legacyP5;
+        _useTablebase = useTablebase;
+        _contempt = contempt;
+        _maxNodes = maxNodes;
         _tt = new TranspositionTable(1 << 20);
         _killerMoves = new int[MaxPly, 2];
         _historyTable = new int[Zobrist.PositionCount, Zobrist.PositionCount];
@@ -313,7 +325,7 @@ public class MinimaxEngine
             && board.PieceCount(0) + board.PieceCount(1) > 8;
         int staticEval = 0;
         if (futilityApplicable)
-            staticEval = EvaluationFunction.EvaluateStatic(board, side, _legacyEval);
+            staticEval = EvaluationFunction.EvaluateStatic(board, side, _legacyEval, _legacyP5);
 
         // Push the position onto the repetition path (skip if the stack is full)
         bool pathPushed = _pathLen < _pathHashes.Length;
@@ -453,15 +465,15 @@ public class MinimaxEngine
         // mobility-free value is checked first; the full evaluation only runs
         // when that value falls inside the window.
         int standPat = _legacySearch
-            ? EvaluationFunction.Evaluate(board, side, board.CountLegalMoves(side), board.CountLegalMoves(side ^ 1), _legacyEval)
-            : EvaluationFunction.EvaluateStatic(board, side, _legacyEval);
+            ? EvaluationFunction.Evaluate(board, side, board.CountLegalMoves(side), board.CountLegalMoves(side ^ 1), _legacyEval, _legacyP5)
+            : EvaluationFunction.EvaluateStatic(board, side, _legacyEval, _legacyP5);
 
         if (standPat >= beta)
             return beta;
 
         if (!_legacySearch && standPat > alpha)
         {
-            standPat = EvaluationFunction.Evaluate(board, side, board.CountLegalMoves(side), board.CountLegalMoves(side ^ 1), _legacyEval);
+            standPat = EvaluationFunction.Evaluate(board, side, board.CountLegalMoves(side), board.CountLegalMoves(side ^ 1), _legacyEval, _legacyP5);
             if (standPat >= beta)
                 return beta;
         }

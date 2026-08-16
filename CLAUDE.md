@@ -29,6 +29,20 @@ Recorded results (A = P5 on, B = legacyP5, 1000 ms/move both):
 
 Bench before/after (2 s from start): baseline 1,426,694 nodes / ~713k nps / depth 11; P5: 1,203,244 nodes / ~601k nps / depth 11 — ~16% fewer nodes for the same depth (SEE ordering efficiency) at ~16% higher per-node cost (SEE computation); the gates above are the net-strength verdict.
 
+### P1 (strength program): legacyP5 gating fix + measurement infrastructure
+
+**legacyP5 gating bug (fixed)**: `MinimaxEngine` never passed `_legacyP5` to `EvaluationFunction` (the parameter existed but was unused), so the 3 P5 eval terms (rat-den influence +15, front-trap guard +20, clear-jump-lane +12) were **always active in engine searches** — including `--legacyP5B` runs. **The recorded P5 A/B results above therefore measured the P5 search features only, with the P5 eval on for both sides.** The fix passes `_legacyP5` at all four eval call sites (`MinimaxEngine.cs` futility staticEval + the three qsearch stand-pat calls); `legacyP5: true` engines now also disable the P5 eval terms. Default (shipped) behavior is provably unchanged (passing `false` is identical to the omitted default). A future eval-term A/B gate can now run engine-level.
+
+New ctor params (reserved, no behavior yet — wired in later phases): `useTablebase = true`, `contempt = 30`, `maxNodes = null` (desktop parity; stored as internal fields).
+
+**Measurement infrastructure (ported from the desktop)**: the Bench now has a statistical arena and cheap regression gates, all enforced in CI:
+- `--arena [--games n] [--timeA/B ms] [--legacyB] [--legacySearchA/B] [--legacyP5A/B] [--seed n] [--openings-file p] [--openings-imbalanced n] [--contemptA/B n] [--smoke]` — paired openings, both colors, **fresh engines per game**, Wilson 95% CI + exact binomial p, gate = A ≥ 55% of decisive with a ≥ 24 decisive floor; exit 0/1/2 (2 = inconclusive; 0 with `--smoke`). This is the gating authority for all strength candidates from P2 onward (the legacy `--selfplay` remains byte-compatible for the recorded history; note its shared-engine instances bias later games).
+- `--bench --positions <file.tsuite> [--baseline f] [--write-baseline]` — node-count regression gate: fails on >15% growth at equal fixed depth vs `bench-baseline.json` (deterministic; baseline re-recorded only after an intentionally accepted behavior change).
+- `--testsuite [--file p]` — 11-entry tactical suite at fixed depth (single source of truth: `tests/JungleGame.Tests/Resources/tactical.tsuite`, also run by xUnit `TestSuiteTests`).
+- `GameState.CreateFromPieces` (model addition) backs suite positions and imbalanced openings; suite searches run with `useTablebase: false`.
+
+**P1 recorded results (2026-08-16)**: bench 2 s = 1,646,562 nodes / ~823k nps / depth 11 (this machine's P1 reference; the 601k P5 number above was recorded on different hardware). Node baseline (fixed depth): start D10 = 356,229; seeded midgame D10 = 159,285; endgame D8 = 4,334; den-race D8 = 107; rats-in-water D8 = 1,168. Tactical suite 11/11; arena smoke exit 0; coverage 80.8%. Sanity gate (64 games, 2000 vs 500 ms, imbalanced ×32): result recorded in the next phase entry.
+
 ## Key behavioral constraints
 
 - **User-confirmed decisions**: 3 difficulty presets (Easy 300 / Medium 1000 / Hard 2000 ms — desktop `StartDialog` values), NO Expert, NO thinking-time selector; 2 modes — Human vs AI (human-first or AI-first) and AI vs AI watch, NO Human-vs-Human; engine copied 100% verbatim (no added properties) — the search-info line shows depth/nodes/time/nps with time measured by the web layer.
@@ -50,6 +64,7 @@ Build & test (engine + AI + web suites run on stock .NET 8, never under WASM):
 - `dotnet test JungleGame.sln -c Release` (perf gates `[Trait("Category","Perf")]` run by default; escape hatch if a runner is slow: `--filter "Category!=Perf"`)
 - Coverage gate: `dotnet test tests/JungleGame.Tests --collect:"XPlat Code Coverage"` then `powershell -File scripts/check-coverage.ps1` (Core ≥ 80%)
 - Native baseline / crash smoke: `dotnet run --project src/JungleGame.Bench -c Release -- --bench --time 2000` and `-- --selfplay --games 2 --timeA 1000 --timeB 300`
+- Strength gates: `--arena --games 64 --timeA 1000 --timeB 1000 --openings-imbalanced 32 --seed 101 [--legacy*B/A]` (gated candidate), `--bench --positions bench-positions.tsuite` (node regression), `--testsuite` (11/11 tactical)
 
 Local dev:
 - `dotnet watch --project src/JungleGame.Web` — CAVEAT: the dev server cannot send COOP/COEP headers, so threading is unavailable and AI thinking pauses the UI there

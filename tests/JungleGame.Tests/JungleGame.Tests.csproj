@@ -24,4 +24,12 @@
     <ProjectReference Include="..\..\src\JungleGame.Core\JungleGame.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\JungleGame.Bench\JungleGame.Bench.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\tactical.tsuite" />
+  </ItemGroup>
+
 </Project>

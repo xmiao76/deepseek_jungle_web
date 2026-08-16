@@ -96,6 +96,49 @@ public class GameState
     public Piece? GetPieceAt(Position pos) =>
         Pieces.TryGetValue(pos, out var piece) ? piece : null;
 
+    /// <summary>
+    /// Builds a live position from an explicit piece set (used by the tactical
+    /// suite and the arena's imbalanced openings). No den may be occupied, both
+    /// sides must have pieces, and the repetition history is seeded with the
+    /// position hash so three-fold detection counts a return to this position.
+    /// </summary>
+    public static GameState CreateFromPieces(IEnumerable<Piece> pieces, Player currentTurn)
+    {
+        var builder = ImmutableDictionary.CreateBuilder<Position, Piece>();
+        int countBlue = 0;
+        int countRed = 0;
+
+        foreach (var piece in pieces)
+        {
+            if (!piece.Position.IsValid)
+                throw new ArgumentException($"Piece {piece} is outside the 7×9 board.", nameof(pieces));
+            if (Board.Initial.IsDen(piece.Position, Player.Blue) ||
+                Board.Initial.IsDen(piece.Position, Player.Red))
+                throw new ArgumentException($"Piece {piece} stands on a den square; no live position contains a den occupant.", nameof(pieces));
+            if (!builder.TryAdd(piece.Position, piece))
+                throw new ArgumentException($"Two pieces on square {piece.Position}.", nameof(pieces));
+
+            if (piece.Owner == Player.Blue) countBlue++; else countRed++;
+        }
+
+        if (countBlue == 0 || countRed == 0)
+            throw new ArgumentException("A live position has pieces on both sides.", nameof(pieces));
+        if (countBlue > 8 || countRed > 8)
+            throw new ArgumentException("More than 8 pieces on a side.", nameof(pieces));
+
+        var placed = builder.ToImmutable();
+        var history = ImmutableList.Create(Zobrist.ComputeHash(placed, currentTurn));
+
+        return new GameState(
+            Board.Initial,
+            placed,
+            currentTurn,
+            GameStatus.InProgress,
+            ImmutableList<Piece>.Empty,
+            ImmutableList<Piece>.Empty,
+            history);
+    }
+
     public ImmutableList<Piece> GetPlayerPieces(Player player) =>
         Pieces.Values.Where(p => p.Owner == player).ToImmutableList();
 

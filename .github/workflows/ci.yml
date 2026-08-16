@@ -33,6 +33,15 @@ jobs:
       - name: Engine crash smoke (self-play)
         run: dotnet run --project src/JungleGame.Bench -c Release --no-build -- --selfplay --games 2 --timeA 1000 --timeB 300
 
+      - name: Node-count regression gate (<= 15% growth at equal depth)
+        run: dotnet run --project src/JungleGame.Bench -c Release --no-build -- --bench --positions bench-positions.tsuite
+
+      - name: Tactical suite (11/11)
+        run: dotnet run --project src/JungleGame.Bench -c Release --no-build -- --testsuite
+
+      - name: Arena crash smoke (gated match, 2 games)
+        run: dotnet run --project src/JungleGame.Bench -c Release --no-build -- --arena --games 2 --timeA 1000 --timeB 300 --smoke
+
       - name: Publish Blazor app (AOT)
         # No --no-build here: the WASM/AOT publish invokes Build for the referenced
         # Core project (NETSDK1085 otherwise).
