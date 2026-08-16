@@ -196,7 +196,7 @@ static void PrintUsage()
     Console.WriteLine("                     [--legacyB] [--legacySearchB] [--legacyP5B] [--seed <n>] [--openings <n>]");
     Console.WriteLine("  JungleGame.Bench --arena [--games <n>] [--timeA <ms>] [--timeB <ms>] [--legacyB]");
     Console.WriteLine("                     [--legacySearchA] [--legacySearchB] [--legacyP5A] [--legacyP5B]");
-    Console.WriteLine("                     [--legacyP6A] [--legacyP6B] [--legacyP7A] [--legacyP7B] [--legacyP8A] [--legacyP8B]");
+    Console.WriteLine("                     [--legacyP6A] [--legacyP6B] [--legacyTimeA] [--legacyTimeB] [--legacyTbA] [--legacyTbB]");
     Console.WriteLine("                     [--seed <n>] [--smoke]");
     Console.WriteLine("                     [--openings-file <path>] [--openings-imbalanced <n>]");
     Console.WriteLine("  JungleGame.Bench --testsuite [--file <path.tsuite>]");
