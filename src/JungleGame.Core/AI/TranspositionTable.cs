@@ -49,8 +49,9 @@ public class TranspositionTable
     /// aspiration windows produce bound entries that must not outlive the search
     /// that produced them (an older entry is a valid bound, but its bound is too
     /// weak to steer a later search; keeping it is strictly worse than a fresh,
-    /// wider-bound entry). An entry with Depth == 0 is empty (PVSearch never
-    /// stores at depth 0).
+    /// wider-bound entry). A slot with Hash == 0 is empty. Depth-0 entries are
+    /// quiescence results (P7) — valid for depth-0 probes only, and the natural
+    /// eviction candidates in the depth-preferred replacement.
     /// </summary>
     private const int BucketCount = 4;
     private const byte MaxGenerationLag = 1; // accept the previous search's entries

@@ -27,13 +27,17 @@ internal static class ArenaRunner
         bool legacyP5B = args.Contains("--legacyP5B");
         bool legacyP6A = args.Contains("--legacyP6A");
         bool legacyP6B = args.Contains("--legacyP6B");
+        bool legacyTimeA = args.Contains("--legacyTimeA");
+        bool legacyTimeB = args.Contains("--legacyTimeB");
+        bool legacyTbA = args.Contains("--legacyTbA");
+        bool legacyTbB = args.Contains("--legacyTbB");
         int seed = Args.ReadInt(args, "--seed", 42);
         int games = Args.ReadInt(args, "--games", 120);
         string? openingsFile = Args.ReadString(args, "--openings-file");
         int imbalanced = Args.ReadInt(args, "--openings-imbalanced", 0);
         bool smoke = args.Contains("--smoke");
-        int contemptA = Args.ReadInt(args, "--contemptA", 30);
-        int contemptB = Args.ReadInt(args, "--contemptB", 30);
+        int contemptA = Args.ReadInt(args, "--contemptA", 0);
+        int contemptB = Args.ReadInt(args, "--contemptB", 0);
 
         var openings = Openings.Load(openingsFile, imbalanced, seed);
         int pairs = openingsFile != null || imbalanced > 0
@@ -46,6 +50,8 @@ internal static class ArenaRunner
             $"{(legacySearchA ? ", A legacy search" : "")}{(legacySearchB ? ", B legacy search" : "")}" +
             $"{(legacyP5A ? ", A legacy P5" : "")}{(legacyP5B ? ", B legacy P5" : "")}" +
             $"{(legacyP6A ? ", A legacy P6" : "")}{(legacyP6B ? ", B legacy P6" : "")}" +
+            $"{(legacyTimeA ? ", A legacy time" : "")}{(legacyTimeB ? ", B legacy time" : "")}" +
+            $"{(legacyTbA ? ", A legacy TB" : "")}{(legacyTbB ? ", B legacy TB" : "")}" +
             $", contempt A={contemptA} B={contemptB})");
         Console.WriteLine($"Openings: {source} (seed {seed})");
         Console.WriteLine();
@@ -59,7 +65,8 @@ internal static class ArenaRunner
                 bool aIsBlue = color == 0;
                 var (wA, wB, d, moves, status) = PlayGame(
                     opening, aIsBlue, timeA, timeB, legacyB, legacySearchA, legacySearchB,
-                    legacyP5A, legacyP5B, legacyP6A, legacyP6B, contemptA, contemptB);
+                    legacyP5A, legacyP5B, legacyP6A, legacyP6B,
+                    legacyTimeA, legacyTimeB, legacyTbA, legacyTbB, contemptA, contemptB);
 
                 winsA += wA;
                 winsB += wB;
@@ -93,14 +100,14 @@ internal static class ArenaRunner
         GameState opening, bool aIsBlue, int timeA, int timeB,
         bool legacyB, bool legacySearchA, bool legacySearchB,
         bool legacyP5A, bool legacyP5B, bool legacyP6A, bool legacyP6B,
-        int contemptA, int contemptB)
+        bool legacyTimeA, bool legacyTimeB, bool legacyTbA, bool legacyTbB, int contemptA, int contemptB)
     {
         // Fresh engines per game: uncorrelated results (the shared-TT protocol of
         // the legacy --selfplay mode biases later games).
         var engineA = new MinimaxEngine(TimeSpan.FromMilliseconds(timeA),
-            legacySearch: legacySearchA, legacyP5: legacyP5A, legacyP6: legacyP6A, contempt: contemptA);
+            legacySearch: legacySearchA, legacyP5: legacyP5A, legacyP6: legacyP6A, legacyTime: legacyTimeA, legacyTb: legacyTbA, contempt: contemptA);
         var engineB = new MinimaxEngine(TimeSpan.FromMilliseconds(timeB),
-            legacyEval: legacyB, legacySearch: legacySearchB, legacyP5: legacyP5B, legacyP6: legacyP6B, contempt: contemptB);
+            legacyEval: legacyB, legacySearch: legacySearchB, legacyP5: legacyP5B, legacyP6: legacyP6B, legacyTime: legacyTimeB, legacyTb: legacyTbB, contempt: contemptB);
 
         var state = opening;
         int moves = 0;

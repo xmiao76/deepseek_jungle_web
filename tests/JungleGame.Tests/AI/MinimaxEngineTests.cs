@@ -172,7 +172,10 @@ public class MinimaxEngineTests
             [new Position(0, 8)] = new Piece(Animal.Rat, Player.Red, new Position(0, 8))
         }, Player.Blue);
 
-        var engine = new MinimaxEngine(TimeSpan.FromSeconds(5), 2);
+        // Tablebase probing disabled: this pins the PURE search (with a table
+        // loaded, a TB-proven but slower capture can outrank the horizon mate
+        // via the forced-win early exit — see the tactical suite note).
+        var engine = new MinimaxEngine(TimeSpan.FromSeconds(5), 2, useTablebase: false);
         var move = engine.FindBestMove(state);
 
         Assert.NotNull(move);

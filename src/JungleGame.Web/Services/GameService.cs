@@ -45,6 +45,30 @@ public sealed class GameService
         State = GameState.CreateInitial();
         _ai = new MinimaxEngine(TimeSpan.FromMilliseconds((int)_difficulty));
         StartNewGame();
+        _ = LoadTablebaseAsync();
+    }
+
+    /// <summary>
+    /// Fetches the gzip'd 2+3-piece endgame tables (a static wwwroot asset) and
+    /// hands the inflated bytes to the probe. The search degrades gracefully to
+    /// pure search until the load completes; a missing or corrupt asset stays
+    /// silent (the probe reports Corrupt and search continues).
+    /// </summary>
+    private static async Task LoadTablebaseAsync()
+    {
+        try
+        {
+            using var http = new HttpClient();
+            byte[] gz = await http.GetByteArrayAsync("tablebases/jungle3.tb.gz");
+            TablebaseProbe.InitializeFromGzip(gz);
+        }
+        catch (HttpRequestException)
+        {
+            // No asset (e.g. dev server without the file): search-only play.
+        }
+        catch (TaskCanceledException)
+        {
+        }
     }
 
     // --- Engine / AI access -------------------------------------------------------------

@@ -23,7 +23,9 @@ public class MinimaxEngine
     private readonly bool _legacyP5; // disables the P5 candidate set (SEE qsearch, counter-move, P5 eval terms)
     private readonly bool _legacyP6; // disables the P6 bundle (LMP, den extension, SEE-sign ordering, capture history)
     internal readonly bool _useTablebase; // reserved (wired in the tablebase phase)
-    internal readonly int _contempt;      // reserved (wired in the time-management phase)
+    private readonly int _contempt;       // draw-score asymmetry (0 = off)
+    private readonly bool _legacyTime;    // disables the P9 time features (easy-move stop, depth skip)
+    private readonly bool _legacyTb;      // disables tablebase probing (A/B strength tests)
     private readonly TranspositionTable _tt;
     private readonly int[,] _killerMoves;
     private readonly int[,] _historyTable;
@@ -45,12 +47,16 @@ public class MinimaxEngine
     /// <param name="legacyP5">Disables the P5 candidate set — SEE capture ordering and
     /// losing-capture pruning in quiescence, the counter-move heuristic, and the P5
     /// evaluation terms (A/B strength tests).</param>
-    /// <param name="useTablebase">Reserved for the tablebase phase; no behavior yet.</param>
-    /// <param name="contempt">Reserved for the time-management phase; no behavior yet.</param>
+    /// <param name="contempt">Draw-score asymmetry in centipawns: the side whose static
+    /// evaluation is non-negative scores a repetition/tablebase draw as -contempt
+    /// (avoids draws), the worse side as +contempt (seeks them). 0 = neutral.</param>
     /// <param name="maxNodes">Optional fixed-node budget per search (0/unlimited by default;
     /// used by deterministic tests).</param>
     /// <param name="legacyP6">Disables the P6 candidate bundle — late move pruning, the
     /// den-setup extension, SEE-sign capture ordering, and capture history (A/B tests).</param>
+    /// <param name="legacyTime">Disables the time-management bundle — the easy-move
+    /// stop and the time-adaptive depth skip (A/B tests).</param>
+    /// <param name="legacyTb">Disables tablebase probing (A/B strength tests).</param>
     public MinimaxEngine(
         TimeSpan? timeLimit = null,
         int? maxDepth = null,
@@ -58,9 +64,11 @@ public class MinimaxEngine
         bool legacySearch = false,
         bool legacyP5 = false,
         bool useTablebase = true,
-        int contempt = 30,
+        int contempt = 0,
         long? maxNodes = null,
-        bool legacyP6 = false)
+        bool legacyP6 = false,
+        bool legacyTime = false,
+        bool legacyTb = false)
     {
         _time = new TimeManager(timeLimit ?? TimeSpan.FromSeconds(4));
         // PVSearch plus quiescence plies must fit inside the per-ply buffer tables
@@ -71,6 +79,8 @@ public class MinimaxEngine
         _legacyP6 = legacyP6;
         _useTablebase = useTablebase;
         _contempt = contempt;
+        _legacyTime = legacyTime;
+        _legacyTb = legacyTb;
         if (maxNodes.HasValue)
             _time.SetNodeBudget(maxNodes.Value);
         _tt = new TranspositionTable(1 << 20);
@@ -84,6 +94,11 @@ public class MinimaxEngine
             _qMoves[i] = new SearchMove[MaxMovesPerPly];
         }
         _order = new MoveOrdering(_killerMoves, _historyTable, _counterMove0, _counterMove1, legacyP5, legacyP6);
+
+        // Idempotent one-time scan for the endgame tables (native search paths);
+        // the browser loads the gzip'd asset through TablebaseProbe.InitializeFromGzip.
+        // Absent/corrupt files degrade silently to search-only play.
+        TablebaseProbe.Initialize();
     }
 
     public long NodesSearched { get; private set; }
@@ -142,12 +157,43 @@ public class MinimaxEngine
 
         SearchMove bestMove = _rootMoves[0];
         Move bestMoveForOrdering = ToPublicMove(bestMove);
+
+        // A tablebase root position: seed the ordering with the tablebase move
+        // (the search still runs — the opponent may err against imperfect play).
+        if (!_legacyTb && _useTablebase && TablebaseProbe.IsLoaded
+            && root.PieceCount(0) + root.PieceCount(1) <= 3
+            && TablebaseProbe.TryProbeWithMove(root, 0, out _, out Move? tbRootMove)
+            && tbRootMove != null)
+        {
+            bestMoveForOrdering = tbRootMove.Value;
+        }
+
         int bestScore = int.MinValue;
+        int stableDepthCount = 0;   // consecutive iterations with the same best move
+        long lastIterationTicks = 0;
 
         for (int depth = 1; depth <= _maxDepth; depth++)
         {
             if (_time.Check(sw, token))
                 break;
+
+            long iterationStartTicks = sw.Elapsed.Ticks;
+            if (!_legacyTime)
+            {
+                // Easy move: the best move has been stable for two iterations at a
+                // meaningful depth and the budget is mostly spent — keep the
+                // completed result instead of starting another iteration.
+                if (stableDepthCount >= 2 && depth >= 6 &&
+                    iterationStartTicks >= _time.BudgetTicks * 35 / 100)
+                    break;
+
+                // Depth skip: the previous iteration consumed a large share of the
+                // budget and the next one is typically several times larger — it
+                // would abort mid-flight and discard the work.
+                if (depth >= 10 && iterationStartTicks >= _time.BudgetTicks * 55 / 100 &&
+                    lastIterationTicks >= _time.BudgetTicks * 15 / 100)
+                    break;
+            }
 
             int currentBest = int.MinValue;
             SearchMove currentBestMove = bestMove;
@@ -218,11 +264,17 @@ public class MinimaxEngine
             // Only accept results from fully completed depths
             if (!_time.Check(sw, token))
             {
+                var prevBestMove = bestMove;
                 bestScore = currentBest;
                 bestMove = currentBestMove;
                 bestMoveForOrdering = ToPublicMove(currentBestMove);
                 LastCompletedDepth = depth;
                 _order.AgeHistoryTable();
+                lastIterationTicks = sw.Elapsed.Ticks - iterationStartTicks;
+
+                stableDepthCount = currentBestMove.From == prevBestMove.From && currentBestMove.To == prevBestMove.To
+                    ? stableDepthCount + 1
+                    : 1;
             }
 
             // A forced win was found — no deeper search needed
@@ -244,9 +296,28 @@ public class MinimaxEngine
             return TerminalScore(board.WinnerSide, board.Turn, ply);
 
         // Three-fold repetition → draw (checked before the TT probe: the hash carries
-        // no repetition state, so a probed score would mask the draw)
+        // no repetition state, so a probed score would mask the draw). With contempt
+        // on, the draw is scored asymmetrically: the side that believes it stands
+        // better avoids the repetition, the worse side seeks it.
         if (_repetitions.IsRepetition(board.Hash))
-            return 0;
+            return DrawScore(board);
+
+        // Tablebase probe: exact WDL for <= 3-piece positions (before the TT —
+        // a probed bound must not mask the exact value). legacyTb disables it
+        // for the A/B gate; the search degrades gracefully when not loaded.
+        if (!_legacyTb && _useTablebase && TablebaseProbe.IsLoaded
+            && board.PieceCount(0) + board.PieceCount(1) <= 3
+            && TablebaseProbe.TryProbe(board, ply, out int tbScore))
+        {
+            if (tbScore != 0)
+            {
+                _tt.Store(board.Hash, 127, AdjustMateForStore(tbScore, ply), default, BoundType.Exact);
+                return tbScore;
+            }
+            // A tablebase draw gets the same contempt treatment as a repetition
+            // draw (never stored — the bias is a search-time policy).
+            return DrawScore(board);
+        }
 
         // TT probe
         if (_tt.TryProbe(board.Hash, depth, alpha, beta, ply, out int ttScore, out Move ttMove))
@@ -457,6 +528,14 @@ public class MinimaxEngine
         if (board.WinnerSide != SearchBoard.NoWinner)
             return TerminalScore(board.WinnerSide, board.Turn, ply);
 
+        // A <= 3-piece position is fully resolved by the tablebase — return the
+        // exact score instead of searching captures (draws get the contempt
+        // treatment like repetitions).
+        if (!_legacyTb && _useTablebase && TablebaseProbe.IsLoaded
+            && board.PieceCount(0) + board.PieceCount(1) <= 3
+            && TablebaseProbe.TryProbe(board, ply, out int tbQScore))
+            return tbQScore != 0 ? tbQScore : DrawScore(board);
+
         int side = board.Turn;
 
         // Lazy mobility in the stand-pat: the full evaluation costs two move
@@ -537,6 +616,19 @@ public class MinimaxEngine
     /// <summary>Score of a finished game, from the perspective of the side to move.</summary>
     private static int TerminalScore(byte winnerSide, int sideToMove, int ply) =>
         winnerSide == sideToMove ? MateScore - ply : ply - MateScore;
+
+    /// <summary>
+    /// Draw score with contempt: the side whose static evaluation is non-negative
+    /// avoids the draw (scores it below zero), the worse side seeks it (scores it
+    /// above zero). The magnitude is the contempt centipawns.
+    /// </summary>
+    internal int DrawScore(SearchBoard board)
+    {
+        if (_contempt == 0)
+            return 0;
+        int staticEval = EvaluationFunction.EvaluateStatic(board, board.Turn, _legacyEval, _legacyP5);
+        return staticEval >= 0 ? -_contempt : _contempt;
+    }
 
     /// <summary>
     /// Convert a root-relative mate score into a node-relative score before storing.
