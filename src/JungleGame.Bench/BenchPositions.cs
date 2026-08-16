@@ -136,6 +136,11 @@ internal static class BenchPositions
         var entries = TestSuiteParser.ParseFile(positionsPath);
         using var writer = new StreamWriter(outPath);
 
+        // Warm-up search: the first search of the process JIT-compiles the engine,
+        // which can blow a fixed wall-clock budget and make early node counts
+        // timing-dependent. The dump must be logic-deterministic, not timing-free.
+        DumpSearch(null, "W", GameState.CreateInitial(), 2);
+
         for (int i = 0; i < entries.Count; i++)
         {
             for (int depth = 1; depth <= 8; depth++)
@@ -171,14 +176,16 @@ internal static class BenchPositions
         return 0;
     }
 
-    private static void DumpSearch(StreamWriter writer, string label, GameState state, int depth)
+    private static void DumpSearch(StreamWriter? writer, string label, GameState state, int depth)
     {
-        // Fresh engine per search: no TT/history carryover, fully deterministic.
-        var engine = new MinimaxEngine(TimeSpan.FromMilliseconds(10_000), depth);
+        // Fresh engine per search: no TT/history carryover. A generous wall-clock
+        // budget never aborts (fixed-depth searches finish far earlier once the
+        // engine is JIT-warm), so node counts are fully deterministic.
+        var engine = new MinimaxEngine(TimeSpan.FromSeconds(60), depth);
         var move = engine.FindBestMove(state);
         string moveText = move == null
             ? "null"
             : $"{move.Value.From.Col},{move.Value.From.Row}-{move.Value.To.Col},{move.Value.To.Row}";
-        writer.WriteLine($"{label} D{depth} {engine.NodesSearched} {moveText}");
+        writer?.WriteLine($"{label} D{depth} {engine.NodesSearched} {moveText}");
     }
 }
