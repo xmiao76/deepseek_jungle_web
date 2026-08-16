@@ -118,6 +118,9 @@ public class TranspositionTable
         score = 0;
         bestMove = default;
 
+        // Store updates same-hash entries in place, so at most one bucket slot can
+        // hold a given hash: the first hash match is authoritative and the scan
+        // can stop there (a stale/shallow/non-cutting match is a real miss).
         for (int i = 0; i < BucketCount; i++)
         {
             var entry = _table[baseIdx + i];

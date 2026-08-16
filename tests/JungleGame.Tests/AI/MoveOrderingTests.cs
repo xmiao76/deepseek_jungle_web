@@ -17,7 +17,7 @@ public class MoveOrderingTests
     {
         var killers = new int[MaxPly, 2];
         var history = new int[Zobrist.PositionCount, Zobrist.PositionCount];
-        return (new MoveOrdering(killers, history, new int[1 << 12], new int[1 << 12], legacyP5: false), killers, history);
+        return (new MoveOrdering(killers, history, new int[1 << 12], new int[1 << 12], legacyP5: false, legacyP6: false), killers, history);
     }
 
     [Fact]

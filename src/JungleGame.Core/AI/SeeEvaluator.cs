@@ -15,6 +15,10 @@ internal static class SeeEvaluator
 {
     private const int MaxSeePly = 6;
 
+    /// <summary>Convenience overload: SEE for a generated capture move.</summary>
+    internal static int See(SearchBoard board, in SearchMove move) =>
+        See(board, board.Occupant(move.From), move.CapturedId, move.To);
+
     /// <summary>
     /// Value of <paramref name="attackerId"/> (the side to move) capturing
     /// <paramref name="victimId"/> on <paramref name="square"/>.

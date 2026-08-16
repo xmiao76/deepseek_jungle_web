@@ -1,4 +1,5 @@
 using JungleGame.Core.Engine;
+using JungleGame.Core.Model;
 
 namespace JungleGame.Core.AI;
 
@@ -16,6 +17,7 @@ internal sealed class MoveOrdering
     private const int KillerBonus2 = 800;
     private const int CounterBonus1 = 700; // P5: between TT and killers
     private const int CounterBonus2 = 600;
+    private const int SeeSignBonus = 50;   // P6: split winning from losing exchanges
     private const int HistoryCap = 500;
 
     private readonly int[,] _killers;
@@ -23,18 +25,62 @@ internal sealed class MoveOrdering
     private readonly int[] _counterMove0;
     private readonly int[] _counterMove1;
     private readonly bool _legacyP5;
+    private readonly bool _legacyP6; // disables the P6 bundle: SEE sign, capture history
+    private readonly int[,,] _captureHistory = new int[9, Zobrist.PositionCount, Zobrist.PositionCount]; // by victim rank
     private readonly int[] _scoreScratch = new int[SearchBoard.MaxMovesPerPly];
 
     /// <summary>SEE scores parallel to the sorted qsearch moves (read by the pruning step).</summary>
     internal readonly int[] SeeScores = new int[SearchBoard.MaxMovesPerPly];
 
-    internal MoveOrdering(int[,] killers, int[,] history, int[] counterMove0, int[] counterMove1, bool legacyP5)
+    internal MoveOrdering(int[,] killers, int[,] history, int[] counterMove0, int[] counterMove1, bool legacyP5, bool legacyP6)
     {
         _killers = killers;
         _history = history;
         _counterMove0 = counterMove0;
         _counterMove1 = counterMove1;
         _legacyP5 = legacyP5;
+        _legacyP6 = legacyP6;
+    }
+
+    /// <summary>
+    /// Records a beta-cutoff heuristic update: killers, history, counter-moves,
+    /// and (P6) capture history. Never called with scores from aborted searches.
+    /// </summary>
+    internal void OnBetaCutoff(in SearchMove move, int depth, int ply, int prevPacked)
+    {
+        if (ply >= MaxPly)
+            return;
+
+        if (move.IsCapture)
+        {
+            if (!_legacyP6)
+                _captureHistory[SearchBoard.RankOf[move.CapturedId], move.From, move.To] += depth * depth;
+            return;
+        }
+
+        int packed = move.From | (move.To << 6);
+        _killers[ply, 1] = _killers[ply, 0];
+        _killers[ply, 0] = packed;
+        _history[move.From, move.To] += depth * depth;
+        if (!_legacyP5 && prevPacked >= 0)
+        {
+            _counterMove1[prevPacked] = _counterMove0[prevPacked];
+            _counterMove0[prevPacked] = packed;
+        }
+    }
+
+    /// <summary>Halve all history scores so recent refutations dominate stale ones.</summary>
+    internal void AgeHistoryTable()
+    {
+        for (int f = 0; f < Zobrist.PositionCount; f++)
+        {
+            for (int t = 0; t < Zobrist.PositionCount; t++)
+            {
+                _history[f, t] /= 2;
+                for (int r = 1; r <= 8; r++)
+                    _captureHistory[r, f, t] /= 2;
+            }
+        }
     }
 
     internal void OrderMoves(SearchBoard board, SearchMove[] moves, int count, Move ttMove, int ply, int prevPacked)
@@ -120,10 +166,17 @@ internal sealed class MoveOrdering
 
         if (move.IsCapture)
         {
-            // MVV-LVA ordering
+            // MVV-LVA ordering; P6 adds the SEE sign (winning exchanges before
+            // losing ones) and capture history (how often this capture refuted).
             int victimRank = SearchBoard.RankOf[move.CapturedId];
             int attackerRank = SearchBoard.RankOf[board.Occupant(move.From)];
-            return victimRank * 100 - attackerRank;
+            int captureScore = victimRank * 100 - attackerRank;
+            if (!_legacyP6)
+            {
+                captureScore += SeeEvaluator.See(board, move) >= 0 ? SeeSignBonus : -SeeSignBonus;
+                captureScore += Math.Min(_captureHistory[victimRank, move.From, move.To], HistoryCap);
+            }
+            return captureScore;
         }
 
         int score = 0;
@@ -153,10 +206,16 @@ internal sealed class MoveOrdering
         return score;
     }
 
-    private static int CaptureScore(SearchBoard board, in SearchMove move)
+    private int CaptureScore(SearchBoard board, in SearchMove move)
     {
         int victimRank = move.IsCapture ? SearchBoard.RankOf[move.CapturedId] : 9; // den entries rank first
         int attackerRank = SearchBoard.RankOf[board.Occupant(move.From)];
-        return victimRank * 10 - attackerRank;
+        int score = victimRank * 10 - attackerRank;
+        if (move.IsCapture && !_legacyP6)
+        {
+            score += SeeEvaluator.See(board, move) >= 0 ? SeeSignBonus : -SeeSignBonus;
+            score += Math.Min(_captureHistory[victimRank, move.From, move.To], HistoryCap);
+        }
+        return score;
     }
 }

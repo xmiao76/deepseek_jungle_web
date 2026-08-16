@@ -41,7 +41,7 @@ New ctor params (reserved, no behavior yet — wired in later phases): `useTable
 - `--testsuite [--file p]` — 11-entry tactical suite at fixed depth (single source of truth: `tests/JungleGame.Tests/Resources/tactical.tsuite`, also run by xUnit `TestSuiteTests`).
 - `GameState.CreateFromPieces` (model addition) backs suite positions and imbalanced openings; suite searches run with `useTablebase: false`.
 
-**P1 recorded results (2026-08-16)**: bench 2 s = 1,646,562 nodes / ~823k nps / depth 11 (this machine's P1 reference; the 601k P5 number above was recorded on different hardware). Node baseline (fixed depth): start D10 = 356,229; seeded midgame D10 = 159,285; endgame D8 = 4,334; den-race D8 = 107; rats-in-water D8 = 1,168. Tactical suite 11/11; arena smoke exit 0; coverage 80.8%. **Note**: those node counts were measured while the engine was still cross-process nondeterministic (see P2) — they were one sample each. Sanity gate (64 games, 2000 vs 500 ms, imbalanced ×32): aborted after 4 games (~5 min/game — the 2000 ms design is too slow to run interactively); re-run at reduced cost after P2 (result in the P2 entry).
+**P1 recorded results (2026-08-16)**: bench 2 s = 1,646,562 nodes / ~823k nps / depth 11 (this machine's P1 reference; the 601k P5 number above was recorded on different hardware). Node baseline (fixed depth): start D10 = 356,229; seeded midgame D10 = 159,285; endgame D8 = 4,334; den-race D8 = 107; rats-in-water D8 = 1,168. Tactical suite 11/11; arena smoke exit 0; coverage 80.8%. **Note**: those node counts were measured while the engine was still cross-process nondeterministic (see P2) — they were one sample each.
 
 ### P2 (strength program): cross-process determinism fix + behavior-neutral speed overhaul
 
@@ -51,7 +51,20 @@ New ctor params (reserved, no behavior yet — wired in later phases): `useTable
 
 **Known quirk (pre-existing, preserved verbatim)**: the qsearch SEE-score array is shared across qnodes — a child qnode overwrites the parent's `SeeScores[i]` for i ≥ 1, so the losing-capture pruning condition reads the deepest child's values. Shipped as-is by the P5 gate; a fix (per-ply SEE buffers) is a behavior change and must go through its own A/B gate.
 
-**P2 recorded results (2026-08-16)**: bench 2 s = 2,164,250 / 2,151,815 nodes ≈ **1.08M nps, depth 12** (P1 reference: ~823k nps, depth 11 — **+31% nps, +1 ply**). Exact-equality gate: 840/840 identical. Node baseline (re-recorded after the determinism fix): start D10 = 288,538; seeded midgame D10 = 216,227; endgame D8 = 2,667; den-race D8 = 103; rats-in-water D8 = 1,236. Tactical suite 11/11; 223 tests green; coverage 80.5%. PerfSmoke floors recalibrated (Debug: ~245k nodes/1 s, depth 10/2 s → floors 150k and depth 8). Reduced sanity arena (imbalanced ×8, 1000 vs 250 ms, seed 42): RESULT-PENDING.
+**P2 recorded results (2026-08-16)**: bench 2 s = 2,164,250 / 2,151,815 nodes ≈ **1.08M nps, depth 12** (P1 reference: ~823k nps, depth 11 — **+31% nps, +1 ply**). Exact-equality gate: 840/840 identical. Node baseline (re-recorded after the determinism fix): start D10 = 288,538; seeded midgame D10 = 216,227; endgame D8 = 2,667; den-race D8 = 103; rats-in-water D8 = 1,236. Tactical suite 11/11; 223 tests green; coverage 80.5%. PerfSmoke floors recalibrated (Debug: ~245k nodes/1 s, depth 10/2 s → floors 150k and depth 8).
+
+**Sanity gate (P1's pending gate, run after P2)** — the arena detects strength differences: A at 1000 ms vs B at 250 ms, imbalanced openings, two pooled seeds (2 × 32 games, run as two parallel processes). Seed 42: A 13 / B 4 / 17 decisive (76%, p = 0.049); seed 4242: A 19 / B 5 / 24 decisive (79%, Wilson [60%, 91%], p = 0.007, **GATE: PASS**). Pooled: **A 32 / B 9 across 41 decisive (78%)** — the harness is trustworthy. Cost lesson: 2000 ms × 64 games ≈ 5 h interactive — future gates run at 1000 ms with 2+ parallel arena processes and pooled seeds.
+
+### P3 (strength program): search bundle A — LMP, den-setup extension, SEE-sign ordering, capture history
+
+Candidates behind the `legacyP6` ctor flag (A/B gate = arena with `--legacyP6B`), all ported from the desktop's validated set (`PVSearcher.cs` / `MoveOrdering.cs`):
+- **Late move pruning**: at depth ≤ 3, the quiet tail (`i >= 4 + depth*depth`) is skipped; den entries, den-setup moves, mate windows, and ≤2-piece sides exempt.
+- **Den-setup extension**: a quiet move onto a square orthogonally adjacent to the enemy den (`SearchBoard.IsAdjacentToOppDen[63, 2]`, built in the static ctor) extends the child by one ply (depth 2-4, capped at 2 extensions per line, mate windows exempt); den-setup moves are also LMR-exempt.
+- **SEE-sign ordering**: main-search captures get ±50 by SEE sign (winning exchanges before losing ones); the qsearch P5 SEE-value ordering is unchanged.
+- **Capture history**: `[9, 63, 63]` by victim rank, +depth² on capture cutoffs, capped at 500 in scoring, aged with the history table. Heuristic updates centralized in `MoveOrdering.OnBetaCutoff`.
+- NOT ported: the planned TT bucket-scan probe fix — `Store` updates same-hash entries in place, so a bucket can never hold two entries with one hash and the first match is authoritative (the fix was a no-op; the probe is unchanged with a clarifying comment).
+
+**P3 recorded results (2026-08-16)**: code + 4 new P6FeatureTests committed with all 198 engine tests green, suite 11/11, node gate passing on the P2 baseline; bench 2 s ≈ **766k nps / depth 12** (SEE-sign ordering costs ~30% nps — the arena gate decides the trade). Arena gate (`--legacyP6B`, 1000 ms both, imbalanced, pooled seeds): RESULT-PENDING — revert this bundle if the gate fails.
 
 ## Key behavioral constraints
 

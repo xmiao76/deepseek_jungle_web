@@ -78,6 +78,8 @@ internal sealed class SearchBoard
     internal static readonly byte[] TerrainOf = new byte[SquareCount];
     internal static readonly byte[] RankOf = new byte[MaxPieceIds + 1]; // piece id → rank 1..8
     internal static readonly byte[][] Neighbors = new byte[SquareCount][];
+    /// <summary>True when the square is orthogonally adjacent to the side's opponent den (a den-entry setup square).</summary>
+    internal static readonly bool[,] IsAdjacentToOppDen = new bool[SquareCount, 2];
     private static readonly Jump[][] LionJumpsOf = new Jump[SquareCount][];
     private static readonly Jump[][] TigerJumpsOf = new Jump[SquareCount][];
 
@@ -124,6 +126,12 @@ internal sealed class SearchBoard
             LionJumpsOf[sq] = BuildJumps(c, r, includeRowChange: true);
             TigerJumpsOf[sq] = BuildJumps(c, r, includeRowChange: false);
         }
+
+        // Blue's opponent den is (3,8) = square 59; Red's is (3,0) = square 3.
+        foreach (byte adj in Neighbors[59])
+            IsAdjacentToOppDen[adj, 0] = true; // for Blue (side 0)
+        foreach (byte adj in Neighbors[3])
+            IsAdjacentToOppDen[adj, 1] = true; // for Red (side 1)
 
         static void AddIfValid(List<byte> list, int c, int r)
         {
