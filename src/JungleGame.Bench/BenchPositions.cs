@@ -111,4 +111,74 @@ internal static class BenchPositions
         var baseline = new BenchBaseline(1, positions);
         File.WriteAllText(path, JsonSerializer.Serialize(baseline, JsonOptions));
     }
+
+    /// <summary>
+    /// Deterministic node-count/best-move dump over the suite positions (depths
+    /// 1..8) and seeded fuzz positions (depths 1..4). Fixed-depth searches never
+    /// abort (10s budget), so a behavior-neutral refactor must produce a
+    /// byte-identical dump — the strongest neutrality gate in the program
+    /// (scripts/check-exact-nodes.ps1 diffs two binaries' dumps).
+    /// </summary>
+    internal static int RunDump(string[] args)
+    {
+        string outPath = Args.ReadString(args, "--dump-nodes")
+            ?? throw new InvalidOperationException("--dump-nodes <file> is required.");
+        string positionsPath = Args.ResolveDataPath(Args.ReadString(args, "--positions", DefaultPositionsPath) ?? DefaultPositionsPath);
+        int fuzzCount = Args.ReadInt(args, "--fuzz", 200);
+        int fuzzSeed = Args.ReadInt(args, "--seed", 20240816);
+
+        if (!File.Exists(positionsPath))
+        {
+            Console.Error.WriteLine($"Positions file not found: {positionsPath}");
+            return 1;
+        }
+
+        var entries = TestSuiteParser.ParseFile(positionsPath);
+        using var writer = new StreamWriter(outPath);
+
+        for (int i = 0; i < entries.Count; i++)
+        {
+            for (int depth = 1; depth <= 8; depth++)
+                DumpSearch(writer, $"S{i}", entries[i].State, depth);
+        }
+
+        int dumped = 0;
+        for (int f = 0; f < fuzzCount; f++)
+        {
+            var rng = new Random(fuzzSeed * 397 + f);
+            int plies = 1 + rng.Next(60);
+            var state = GameState.CreateInitial();
+            bool live = true;
+            for (int p = 0; p < plies; p++)
+            {
+                var legal = MoveGenerator.GenerateLegalMoves(state, state.CurrentTurn);
+                if (legal.Count == 0 || state.Status != GameStatus.InProgress)
+                {
+                    live = false;
+                    break;
+                }
+                state = GameController.ApplyMove(state, legal[rng.Next(legal.Count)]);
+            }
+            if (!live)
+                continue;
+
+            for (int depth = 1; depth <= 4; depth++)
+                DumpSearch(writer, $"F{dumped}", state, depth);
+            dumped++;
+        }
+
+        Console.WriteLine($"Dumped {entries.Count} suite positions (depths 1..8) and {dumped} fuzz positions (depths 1..4) to {outPath}.");
+        return 0;
+    }
+
+    private static void DumpSearch(StreamWriter writer, string label, GameState state, int depth)
+    {
+        // Fresh engine per search: no TT/history carryover, fully deterministic.
+        var engine = new MinimaxEngine(TimeSpan.FromMilliseconds(10_000), depth);
+        var move = engine.FindBestMove(state);
+        string moveText = move == null
+            ? "null"
+            : $"{move.Value.From.Col},{move.Value.From.Row}-{move.Value.To.Col},{move.Value.To.Row}";
+        writer.WriteLine($"{label} D{depth} {engine.NodesSearched} {moveText}");
+    }
 }

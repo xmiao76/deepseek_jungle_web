@@ -58,6 +58,8 @@ static int RunBench(string[] args)
     bool hasPositions = Args.ReadString(args, "--positions") != null;
     if (hasPositions)
         return BenchPositions.Run(args);
+    if (Args.ReadString(args, "--dump-nodes") != null)
+        return BenchPositions.RunDump(args);
 
     int timeMs = Args.ReadInt(args, "--time", 2000);
     int? maxDepth = Args.TryReadInt(args, "--depth");
