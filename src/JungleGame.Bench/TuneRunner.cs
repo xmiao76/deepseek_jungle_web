@@ -155,6 +155,21 @@ internal static class TuneRunner
 
         var weights = new double[EvalParameters.WeightCount];
         EvalParameters.Default.ToVector(weights, 0);
+
+        // Baseline: the hand-tuned vector's loss on the held-out split — the
+        // adoption gate requires the fit to beat this by >= 1%.
+        var baseline = new double[EvalParameters.WeightCount];
+        EvalParameters.Default.ToVector(baseline, 0);
+        double baselineValLoss = 0;
+        foreach (int i in valIdx)
+        {
+            double p = Sigmoid(Dot(baseline, features[i]) / scale);
+            double y = Label(records[i]);
+            baselineValLoss += -y * Math.Log(Math.Max(p, 1e-12)) - (1 - y) * Math.Log(Math.Max(1 - p, 1e-12));
+        }
+        baselineValLoss /= valIdx.Count;
+        Console.WriteLine($"Hand-tuned baseline: val loss {baselineValLoss:F6}.");
+
         var m = new double[weights.Length];
         var v = new double[weights.Length];
         double bestValLoss = double.MaxValue;
@@ -230,6 +245,9 @@ internal static class TuneRunner
         lines.Add("}");
         File.WriteAllText(outPath, string.Join("\n", lines));
         Console.WriteLine($"Wrote {outPath}. Validation loss {bestValLoss:F6}.");
+        double improvement = (baselineValLoss - bestValLoss) / baselineValLoss;
+        Console.WriteLine($"Improvement over hand-tuned: {improvement:P1} " +
+            $"{(improvement >= 0.01 ? "(>= 1% gate PASS)" : "(< 1% gate FAIL)")}.");
 
         var defaultParams = EvalParameters.Default;
         var d = new double[EvalParameters.WeightCount];
