@@ -12,3 +12,5 @@ dist/
 *.exe
 /test-results/
 /.wrangler/
+tuning-data*.bin
+weights*.json
