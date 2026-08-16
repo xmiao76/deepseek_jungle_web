@@ -132,6 +132,30 @@ pub fn neighbors(sq: u8) -> &'static [u8] {
     &tables().neighbors[sq as usize]
 }
 
+/// True when the square is a trap of the given side's opponent.
+#[inline]
+pub fn is_enemy_trap_square(sq: u8, side: u8) -> bool {
+    if side == 0 {
+        TRAP_RED.contains(&sq)
+    } else {
+        TRAP_BLUE.contains(&sq)
+    }
+}
+
+/// True when the square is orthogonally adjacent to the side's opponent den
+/// (a den-entry setup square).
+#[inline]
+pub fn is_adjacent_to_opp_den(sq: u8, side: u8) -> bool {
+    let den = if side == 0 { DEN_RED } else { DEN_BLUE };
+    neighbors(den).contains(&sq)
+}
+
+/// Counts the legal moves for `side` (uses a stack scratch buffer).
+pub fn count_legal_moves(board: &Board, side: u8) -> i32 {
+    let mut buf = [Move { from: 0, to: 0, captured_id: 0, enters_den: false }; MAX_MOVES];
+    generate_moves(board, side, &mut buf) as i32
+}
+
 /// True when the Lion/Tiger at `from` has a legal, rat-free jump to `target`.
 pub fn can_jump_to(board: &Board, id: u8, from: u8, target: u8) -> bool {
     let rank = rank_of(id);
@@ -147,6 +171,33 @@ pub fn can_jump_to(board: &Board, id: u8, from: u8, target: u8) -> bool {
         Some(jumps) => {
             for j in jumps {
                 if j.target == target && !jump_blocked(board, j) {
+                    return true;
+                }
+            }
+            false
+        }
+    }
+}
+
+/// True when the Lion/Tiger has a rat-free jump whose landing lies on the enemy
+/// half of the board (the P5 clear-jump-lane eval term).
+pub fn has_clear_jump_to_enemy_half(board: &Board, id: u8, from: u8) -> bool {
+    let rank = rank_of(id);
+    let jumps: Option<&Vec<Jump>> = if rank == 7 {
+        Some(&tables().lion_jumps[from as usize])
+    } else if rank == 6 {
+        Some(&tables().tiger_jumps[from as usize])
+    } else {
+        None
+    };
+    match jumps {
+        None => false,
+        Some(jumps) => {
+            let side = owner_of(id);
+            for j in jumps {
+                let target_row = j.target / 7;
+                let enemy_half = if side == 0 { target_row >= 6 } else { target_row <= 2 };
+                if enemy_half && !jump_blocked(board, j) {
                     return true;
                 }
             }

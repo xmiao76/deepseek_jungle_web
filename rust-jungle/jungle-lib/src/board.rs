@@ -175,3 +175,61 @@ impl Move {
         self.captured_id != 0
     }
 }
+
+impl Board {
+    /// Flips the side to move without a piece move (null-move pruning).
+    pub fn make_null_move(&mut self) {
+        self.turn ^= 1;
+        self.hash ^= zobrist().turn_key;
+    }
+
+    pub fn unmake_null_move(&mut self) {
+        self.make_null_move();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::movegen::{generate_moves, MAX_MOVES};
+
+    #[test]
+    fn make_unmake_roundtrip_restores_count_and_hash() {
+        let mut b = Board::initial();
+        let start_hash = b.hash;
+        let start_count = b.count;
+        // Play a fixed-depth sequence of moves (all 4 plies), verifying after
+        // each make that count/hash are consistent and that unmake restores.
+        fn verify(b: &Board) {
+            let mut expect_count = [0u8, 0];
+            let mut expect_hash = 0u64;
+            for sq in 0..SQUARES {
+                let id = b.squares[sq];
+                if id != 0 {
+                    expect_count[owner_of(id) as usize] += 1;
+                    expect_hash ^= zobrist().piece_keys[sq][type_of(id) as usize];
+                }
+            }
+            if b.turn == 1 { expect_hash ^= zobrist().turn_key; }
+            assert_eq!(b.count, expect_count, "count mismatch");
+            assert_eq!(b.hash, expect_hash, "hash mismatch at square");
+        }
+
+        fn walk(b: &mut Board, depth: i32) {
+            verify(b);
+            if depth == 0 { return; }
+            let mut moves = [Move { from: 0, to: 0, captured_id: 0, enters_den: false }; MAX_MOVES];
+            let n = generate_moves(b, b.turn, &mut moves);
+            for i in 0..n {
+                let m = moves[i];
+                let undo = b.make_move(&m);
+                walk(b, depth - 1);
+                b.unmake_move(&m, &undo);
+            }
+        }
+
+        walk(&mut b, 3);
+        assert_eq!(b.hash, start_hash);
+        assert_eq!(b.count, start_count);
+    }
+}

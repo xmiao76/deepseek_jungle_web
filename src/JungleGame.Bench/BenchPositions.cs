@@ -305,6 +305,110 @@ internal static class BenchPositions
         return 0;
     }
 
+    /// <summary>
+    /// Eval oracle for the Rust port: dumps the static evaluation (both sides,
+    /// all legacyEval x legacyP5 combos) for the start position + seeded fuzz.
+    /// </summary>
+    internal static int RunEvalDump(string[] args)
+    {
+        string outPath = Args.ReadString(args, "--eval-dump")
+            ?? throw new InvalidOperationException("--eval-dump <file> is required.");
+        int fuzz = Args.ReadInt(args, "--fuzz", 50);
+        int fuzzSeed = Args.ReadInt(args, "--seed", 20240816);
+
+        var positions = new List<GameState> { GameState.CreateInitial() };
+        for (int f = 0; f < fuzz; f++)
+        {
+            var rng = new Random(fuzzSeed * 397 + f);
+            int plies = 1 + rng.Next(60);
+            var s = GameState.CreateInitial();
+            for (int p = 0; p < plies && s.Status == GameStatus.InProgress; p++)
+            {
+                var legal = MoveGenerator.GenerateLegalMoves(s, s.CurrentTurn);
+                if (legal.Count == 0) break;
+                s = GameController.ApplyMove(s, legal[rng.Next(legal.Count)]);
+            }
+            positions.Add(s);
+        }
+
+        using var writer = new StreamWriter(outPath);
+        for (int i = 0; i < positions.Count; i++)
+        {
+            var board = SearchBoard.FromGameState(positions[i]);
+            int side = (int)positions[i].CurrentTurn;
+            var vals = new List<int>();
+            for (int s = 0; s < 2; s++)
+                foreach (bool legacyEval in new[] { false, true })
+                    foreach (bool legacyP5 in new[] { false, true })
+                        vals.Add(EvaluationFunction.EvaluateStatic(board, s, legacyEval, legacyP5));
+            // Also dump the full eval (with mobility) for the default config.
+            int m0 = board.CountLegalMoves(0);
+            int m1 = board.CountLegalMoves(1);
+            writer.WriteLine($"P{i} hex={HexLayout(positions[i])} stm={side} eval={string.Join(",", vals)} mob={m0},{m1} full={EvaluationFunction.Evaluate(board, 0, m0, m1)},{EvaluationFunction.Evaluate(board, 1, m1, m0)}");
+        }
+        Console.WriteLine($"Eval dump → {outPath}.");
+        return 0;
+    }
+
+    /// <summary>
+    /// Full-search oracle for the Rust port: fixed-depth searches (pure search,
+    /// useTablebase off) over the suite + seeded fuzz positions, dumping the hex
+    /// layout, the game history hashes, and the (node count, best move) so the
+    /// Rust engine can reproduce and compare byte-for-byte.
+    /// </summary>
+    internal static int RunSearchDump(string[] args)
+    {
+        string outPath = Args.ReadString(args, "--search-dump")
+            ?? throw new InvalidOperationException("--search-dump <file> is required.");
+        int fuzz = Args.ReadInt(args, "--fuzz", 20);
+        int fuzzSeed = Args.ReadInt(args, "--seed", 20240816);
+        int suiteMaxDepth = Args.ReadInt(args, "--suite-depth", 8);
+        int fuzzMaxDepth = Args.ReadInt(args, "--fuzz-depth", 4);
+        bool legacyEval = args.Contains("--legacy-eval");
+        bool legacySearch = args.Contains("--legacy-search");
+        bool legacyP5 = args.Contains("--legacy-p5");
+        bool legacyP6 = args.Contains("--legacy-p6");
+
+        var positions = new List<GameState>();
+        foreach (var entry in TestSuiteParser.ParseFile(
+            Args.ResolveDataPath(Args.ReadString(args, "--positions", DefaultPositionsPath) ?? DefaultPositionsPath)))
+            positions.Add(entry.State);
+
+        for (int f = 0; f < fuzz; f++)
+        {
+            var rng = new Random(fuzzSeed * 397 + f);
+            int plies = 1 + rng.Next(60);
+            var s = GameState.CreateInitial();
+            for (int p = 0; p < plies && s.Status == GameStatus.InProgress; p++)
+            {
+                var legal = MoveGenerator.GenerateLegalMoves(s, s.CurrentTurn);
+                if (legal.Count == 0) break;
+                s = GameController.ApplyMove(s, legal[rng.Next(legal.Count)]);
+            }
+            if (s.Status == GameStatus.InProgress)
+                positions.Add(s);
+        }
+
+        using var writer = new StreamWriter(outPath);
+        for (int i = 0; i < positions.Count; i++)
+        {
+            int maxD = i < positions.Count - fuzz ? suiteMaxDepth : fuzzMaxDepth;
+            for (int depth = 1; depth <= maxD; depth++)
+            {
+                var engine = new MinimaxEngine(TimeSpan.FromSeconds(60), depth,
+                    legacyEval: legacyEval, legacySearch: legacySearch, legacyP5: legacyP5, legacyP6: legacyP6, useTablebase: false);
+                var move = engine.FindBestMove(positions[i]);
+                string moveText = move == null ? "null" : $"{move.Value.From.Row * 7 + move.Value.From.Col}>{move.Value.To.Row * 7 + move.Value.To.Col}";
+                writer.WriteLine($"P{i} hex={HexLayout(positions[i])} hist={HistoryHex(positions[i])} stm={(int)positions[i].CurrentTurn} D{depth} {engine.NodesSearched} {moveText}");
+            }
+        }
+        Console.WriteLine($"Search dump → {outPath}.");
+        return 0;
+    }
+
+    private static string HistoryHex(GameState state) =>
+        string.Join(",", state.History.Select(h => h.ToString("x16", System.Globalization.CultureInfo.InvariantCulture)));
+
     private static void DumpSearch(StreamWriter? writer, string label, GameState state, int depth)
     {
         // Fresh engine per search: no TT/history carryover. A generous wall-clock

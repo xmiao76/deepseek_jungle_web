@@ -74,6 +74,10 @@ static int RunBench(string[] args)
         return BenchPositions.RunPerftDump(args);
     if (Args.ReadString(args, "--order-dump") != null)
         return BenchPositions.RunOrderDump(args);
+    if (Args.ReadString(args, "--eval-dump") != null)
+        return BenchPositions.RunEvalDump(args);
+    if (Args.ReadString(args, "--search-dump") != null)
+        return BenchPositions.RunSearchDump(args);
 
     int timeMs = Args.ReadInt(args, "--time", 2000);
     int? maxDepth = Args.TryReadInt(args, "--depth");

@@ -1,12 +1,20 @@
 //! Jungle (Dou Shou Qi) core for the WASM port: board, movegen, Zobrist.
 
 pub mod board;
+pub mod eval;
 pub mod movegen;
+pub mod moveorder;
 pub mod netrand;
+pub mod rep;
+pub mod search;
+pub mod see;
+pub mod tt;
 pub mod zobrist;
 
 pub use board::{Board, Move, NO_WINNER, SQUARES};
+pub use eval::{evaluate, evaluate_static};
 pub use movegen::{generate_moves, generate_captures, can_jump_to, neighbors, column_major, MAX_MOVES};
+pub use search::Search;
 
 /// Counts nodes reachable in exactly `depth` plies via make/unmake (count
 /// parity only; the order parity lives in the CLI).

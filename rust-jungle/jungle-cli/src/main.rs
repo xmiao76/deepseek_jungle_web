@@ -1,6 +1,6 @@
 //! Spike/port CLI: perft, parity (count + move order), zobrist verify, bench.
 
-use jungle_lib::{Board, Move, generate_moves, perft, SQUARES};
+use jungle_lib::{Board, Move, Search, evaluate_static, generate_moves, perft, SQUARES};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -86,6 +86,102 @@ fn main() {
             println!("order-parity: {checked} checked, {mismatches} mismatches");
             std::process::exit(if mismatches == 0 { 0 } else { 1 });
         }
+        "search-parity" => {
+            let path = args.get(2).expect("dump file required");
+            let text = std::fs::read_to_string(path).expect("read dump");
+            let mut checked = 0usize;
+            let mut mismatches = 0usize;
+            for line in text.lines() {
+                if line.trim().is_empty() { continue; }
+                // P{i} hex=<hex> hist=<h0,h1,...> stm=<0|1> D<depth> <nodes> <from>to|null>
+                let hex = field(line, "hex=");
+                let hist = field(line, "hist=");
+                let stm: u8 = field(line, "stm=").parse().unwrap();
+                let rest = line[line.find("stm=").unwrap() + 4..].to_string();
+                let parts: Vec<&str> = rest.split_whitespace().collect();
+                // parts: [stm, D<depth>, nodes, move]
+                let depth: i32 = parts[1].trim_start_matches('D').parse().unwrap();
+                let expected_nodes: u64 = parts[2].parse().unwrap();
+                let expected_move = parts[3];
+
+                let grid = hex_grid(hex);
+                let mut board = Board::from_grid(&grid, stm);
+                let history: Vec<u64> = if hist.is_empty() { Vec::new() }
+                    else { hist.split(',').map(|h| u64::from_str_radix(h, 16).unwrap()).collect() };
+
+                let mut search = Search::new(
+                    args.contains(&"--legacy-eval".to_string()),
+                    args.contains(&"--legacy-search".to_string()),
+                    args.contains(&"--legacy-p5".to_string()),
+                    args.contains(&"--legacy-p6".to_string()),
+                );
+                let best = search.search_best_move(&mut board, depth, &history);
+
+                let actual_move = match best {
+                    Some((f, t)) => format!("{}>{}", f, t),
+                    None => "null".to_string(),
+                };
+                checked += 1;
+                if search.nodes != expected_nodes || actual_move != expected_move {
+                    mismatches += 1;
+                    if mismatches <= 100 {
+                        eprintln!("SEARCH MISMATCH {} D{}: nodes {} vs {} move {} vs {}",
+                            line.split_whitespace().next().unwrap(), depth, search.nodes, expected_nodes, actual_move, expected_move);
+                    }
+                }
+            }
+            println!("search-parity: {checked} checked, {mismatches} mismatches");
+            std::process::exit(if mismatches == 0 { 0 } else { 1 });
+        }
+        "eval-verify" => {
+            let path = args.get(2).expect("dump file required");
+            let text = std::fs::read_to_string(path).expect("read dump");
+            let mut checked = 0usize;
+            let mut mismatches = 0usize;
+            for line in text.lines() {
+                if line.trim().is_empty() { continue; }
+                let hex_start = line.find("hex=").map(|i| i + 4).expect("hex=");
+                let hex_end = line[hex_start..].find(' ').map(|i| hex_start + i).unwrap();
+                let hex = &line[hex_start..hex_end];
+                let eval_str = field(line, "eval=");
+                let expected: Vec<i32> = eval_str.split(',').map(|s| s.parse().unwrap()).collect();
+                assert_eq!(expected.len(), 8);
+                let grid = hex_grid(hex);
+                let b = Board::from_grid(&grid, 0);
+                let mut idx = 0;
+                for s in 0..2u8 {
+                    for legacy_eval in [false, true] {
+                        for legacy_p5 in [false, true] {
+                            let actual = evaluate_static(&b, s, legacy_eval, legacy_p5);
+                            checked += 1;
+                            if actual != expected[idx] {
+                                mismatches += 1;
+                                if mismatches <= 5 {
+                                    eprintln!("EVAL MISMATCH line {}: side {} le {} lp5 {} expected {} got {}", line.split_whitespace().next().unwrap(), s, legacy_eval, legacy_p5, expected[idx], actual);
+                                }
+                            }
+                            idx += 1;
+                        }
+                    }
+                }
+                // Full eval (with mobility) for the default config.
+                if let Some(full_start) = line.find(" full=") {
+                    let full = &line[full_start + 6..];
+                    let full_vals: Vec<i32> = full.split(',').map(|s| s.parse().unwrap()).collect();
+                    let m0 = count_legal(&b, 0);
+                    let m1 = count_legal(&b, 1);
+                    let f0 = jungle_lib::evaluate(&b, 0, m0, m1, false, false);
+                    let f1 = jungle_lib::evaluate(&b, 1, m1, m0, false, false);
+                    checked += 2;
+                    if f0 != full_vals[0] || f1 != full_vals[1] {
+                        mismatches += 1;
+                        eprintln!("FULL EVAL MISMATCH: {} got {} {} expected {} {}", line.split_whitespace().next().unwrap(), f0, f1, full_vals[0], full_vals[1]);
+                    }
+                }
+            }
+            println!("eval-verify: {checked} checked, {mismatches} mismatches");
+            std::process::exit(if mismatches == 0 { 0 } else { 1 });
+        }
         "zobrist-verify" => {
             let path = args.get(2).expect("dump file required");
             let text = std::fs::read_to_string(path).expect("read dump");
@@ -137,6 +233,18 @@ fn main() {
             std::process::exit(1);
         }
     }
+}
+
+fn count_legal(b: &Board, side: u8) -> i32 {
+    let mut buf = [Move { from: 0, to: 0, captured_id: 0, enters_den: false }; 128];
+    generate_moves(b, side, &mut buf) as i32
+}
+
+/// Extracts the value after "key=" in a whitespace-delimited dump line.
+fn field<'a>(line: &'a str, key: &str) -> &'a str {
+    let start = line.find(key).map(|i| i + key.len()).unwrap_or_else(|| panic!("missing {key}"));
+    let end = line[start..].find(' ').map(|i| start + i).unwrap_or(line.len());
+    &line[start..end]
 }
 
 /// Parses a 126-char hex string into a 63-byte grid (square -> id = type+1).
