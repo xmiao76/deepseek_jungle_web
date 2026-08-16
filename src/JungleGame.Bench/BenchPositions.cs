@@ -176,6 +176,88 @@ internal static class BenchPositions
         return 0;
     }
 
+    /// <summary>
+    /// Perft oracle dump for the Rust spike's parity gate: fuzz positions ×
+    /// depths 1..4, one line per (position, depth): count, 63-byte hex piece
+    /// layout, side to move. Counts are order-independent, so the dump pins
+    /// the movegen semantics the port must match.
+    /// </summary>
+    internal static int RunPerftDump(string[] args)
+    {
+        string outPath = Args.ReadString(args, "--perft-dump")
+            ?? throw new InvalidOperationException("--perft-dump <file> is required.");
+        int fuzzCount = Args.ReadInt(args, "--fuzz", 200);
+        int fuzzSeed = Args.ReadInt(args, "--seed", 20240816);
+
+        var positions = new List<GameState> { GameState.CreateInitial() };
+        for (int f = 0; f < fuzzCount; f++)
+        {
+            var rng = new Random(fuzzSeed * 397 + f);
+            int plies = 1 + rng.Next(60);
+            var state = GameState.CreateInitial();
+            bool live = true;
+            for (int p = 0; p < plies; p++)
+            {
+                var legal = MoveGenerator.GenerateLegalMoves(state, state.CurrentTurn);
+                if (legal.Count == 0 || state.Status != GameStatus.InProgress)
+                {
+                    live = false;
+                    break;
+                }
+                state = GameController.ApplyMove(state, legal[rng.Next(legal.Count)]);
+            }
+            if (live)
+                positions.Add(state);
+        }
+
+        using var writer = new StreamWriter(outPath);
+        for (int i = 0; i < positions.Count; i++)
+        {
+            var board = SearchBoard.FromGameState(positions[i]);
+            int side = (int)positions[i].CurrentTurn;
+            for (int depth = 1; depth <= 4; depth++)
+            {
+                ulong count = PerftCount(board, side, depth);
+                writer.WriteLine($"P{i} D{depth} {count} {HexLayout(positions[i])} {side}");
+            }
+        }
+        Console.WriteLine($"Perft dump: {positions.Count} positions × depths 1..4 → {outPath}.");
+        return 0;
+    }
+
+    private static ulong PerftCount(SearchBoard board, int side, int depth)
+    {
+        if (depth == 0)
+            return 1;
+        Span<SearchMove> moves = stackalloc SearchMove[SearchBoard.MaxMovesPerPly];
+        int n = board.GenerateMoves(side, moves);
+        if (depth == 1)
+            return (ulong)n;
+        ulong total = 0;
+        for (int i = 0; i < n; i++)
+        {
+            var clone = board.Clone();
+            clone.ApplyMove(moves[i]);
+            total += PerftCount(clone, side ^ 1, depth - 1);
+        }
+        return total;
+    }
+
+    /// <summary>63 bytes square→pieceId as hex pairs (00 = empty).</summary>
+    private static string HexLayout(GameState state)
+    {
+        var sb = new System.Text.StringBuilder(126);
+        Span<byte> grid = stackalloc byte[63];
+        foreach (var kv in state.Pieces)
+        {
+            int sq = kv.Key.Row * 7 + kv.Key.Col;
+            grid[sq] = (byte)(((int)kv.Value.Animal - 1) * 2 + (int)kv.Value.Owner + 1);
+        }
+        foreach (byte b in grid)
+            sb.Append(b.ToString("x2", System.Globalization.CultureInfo.InvariantCulture));
+        return sb.ToString();
+    }
+
     private static void DumpSearch(StreamWriter? writer, string label, GameState state, int depth)
     {
         // Fresh engine per search: no TT/history carryover. A generous wall-clock

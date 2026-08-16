@@ -48,6 +48,14 @@ switch (args[0])
         return ArenaRunner.Run(args);
     case "--testsuite":
         return RunTestSuite(args);
+    case "--tb-build":
+        return TbRunner.RunBuild(args);
+    case "--tb-verify":
+        return TbRunner.RunVerify(args);
+    case "--gen-data":
+        return TuneRunner.RunGenData(args);
+    case "--tune":
+        return TuneRunner.RunTune(args);
     default:
         PrintUsage();
         return 1;
@@ -60,6 +68,8 @@ static int RunBench(string[] args)
         return BenchPositions.Run(args);
     if (Args.ReadString(args, "--dump-nodes") != null)
         return BenchPositions.RunDump(args);
+    if (Args.ReadString(args, "--perft-dump") != null)
+        return BenchPositions.RunPerftDump(args);
 
     int timeMs = Args.ReadInt(args, "--time", 2000);
     int? maxDepth = Args.TryReadInt(args, "--depth");
@@ -186,7 +196,12 @@ static void PrintUsage()
     Console.WriteLine("                     [--legacyB] [--legacySearchB] [--legacyP5B] [--seed <n>] [--openings <n>]");
     Console.WriteLine("  JungleGame.Bench --arena [--games <n>] [--timeA <ms>] [--timeB <ms>] [--legacyB]");
     Console.WriteLine("                     [--legacySearchA] [--legacySearchB] [--legacyP5A] [--legacyP5B]");
-    Console.WriteLine("                     [--legacyP6A] [--legacyP6B] [--seed <n>] [--smoke]");
+    Console.WriteLine("                     [--legacyP6A] [--legacyP6B] [--legacyP7A] [--legacyP7B] [--legacyP8A] [--legacyP8B]");
+    Console.WriteLine("                     [--seed <n>] [--smoke]");
     Console.WriteLine("                     [--openings-file <path>] [--openings-imbalanced <n>]");
     Console.WriteLine("  JungleGame.Bench --testsuite [--file <path.tsuite>]");
+    Console.WriteLine("  JungleGame.Bench --tb-build [--path <dir>] [--no-dtm] [--embed-path <dir>]");
+    Console.WriteLine("  JungleGame.Bench --tb-verify [--samples <n>] [--seed <n>]");
+    Console.WriteLine("  JungleGame.Bench --gen-data [--games <n>] [--depth <n>] [--parallel <n>] [--out <file>]");
+    Console.WriteLine("  JungleGame.Bench --tune [--data <file>] [--epochs <n>] [--lr <x>] [--out <file>]");
 }
