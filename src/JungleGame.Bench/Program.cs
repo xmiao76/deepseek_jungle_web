@@ -56,6 +56,8 @@ switch (args[0])
         return TuneRunner.RunGenData(args);
     case "--tune":
         return TuneRunner.RunTune(args);
+    case "--zobrist-dump":
+        return RunZobristDump(args);
     default:
         PrintUsage();
         return 1;
@@ -70,6 +72,8 @@ static int RunBench(string[] args)
         return BenchPositions.RunDump(args);
     if (Args.ReadString(args, "--perft-dump") != null)
         return BenchPositions.RunPerftDump(args);
+    if (Args.ReadString(args, "--order-dump") != null)
+        return BenchPositions.RunOrderDump(args);
 
     int timeMs = Args.ReadInt(args, "--time", 2000);
     int? maxDepth = Args.TryReadInt(args, "--depth");
@@ -187,6 +191,23 @@ static int RunSelfPlay(string[] args)
     return 0;
 }
 
+static int RunZobristDump(string[] args)
+{
+    // Oracle for the Rust port's Zobrist PRNG replication: the exact key table
+    // (63 squares x 16 piece types) + the turn key + the start-position hash.
+    string outPath = Args.ReadString(args, "--zobrist-dump")
+        ?? throw new InvalidOperationException("--zobrist-dump <file> is required.");
+    using var writer = new StreamWriter(outPath);
+    var inv = System.Globalization.CultureInfo.InvariantCulture;
+    for (int p = 0; p < Zobrist.PositionCount; p++)
+        for (int i = 0; i < 16; i++)
+            writer.WriteLine(Zobrist.PieceKeys[p, i].ToString("x16", inv));
+    writer.WriteLine(Zobrist.TurnKey.ToString("x16", inv));
+    writer.WriteLine(Zobrist.ComputeHash(GameState.CreateInitial()).ToString("x16", inv));
+    Console.WriteLine($"Zobrist dump → {outPath}.");
+    return 0;
+}
+
 static void PrintUsage()
 {
     Console.WriteLine("Usage:");
@@ -204,4 +225,5 @@ static void PrintUsage()
     Console.WriteLine("  JungleGame.Bench --tb-verify [--samples <n>] [--seed <n>]");
     Console.WriteLine("  JungleGame.Bench --gen-data [--games <n>] [--depth <n>] [--parallel <n>] [--out <file>]");
     Console.WriteLine("  JungleGame.Bench --tune [--data <file>] [--epochs <n>] [--lr <x>] [--out <file>]");
+    Console.WriteLine("  JungleGame.Bench --zobrist-dump <file>");
 }

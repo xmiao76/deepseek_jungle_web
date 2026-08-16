@@ -1,83 +1,50 @@
-//! Move generation and perft — a line-for-line port of the C# SearchBoard's
-//! GenerateMoves/TryMakeMove/CanCapture for the parity spike.
+//! Move generation + make/unmake — a line-for-line port of the C# SearchBoard.
+//! Move order follows the C# ImmutableDictionary iteration order, which is
+//! ascending `Position.GetHashCode()` = `Col*9+Row` (column-major).
 
-use crate::board::{Board, SQUARES};
+use crate::board::*;
 
 pub const MAX_MOVES: usize = 128;
 
-#[derive(Clone, Copy, Debug)]
-pub struct Move {
-    pub from: u8,
-    pub to: u8,
-}
-
-// ---- Terrain ---------------------------------------------------------------
-
-const WATER: [u8; 12] = [22, 23, 29, 30, 36, 37, 25, 26, 32, 33, 39, 40];
-const TRAP_BLUE: [u8; 3] = [2, 4, 10];
-const TRAP_RED: [u8; 3] = [58, 60, 52];
-const DEN_BLUE: u8 = 3;
-const DEN_RED: u8 = 59;
-
-#[inline]
-pub fn is_water(sq: u8) -> bool {
-    WATER.contains(&sq)
-}
-
-#[inline]
-fn is_own_den(sq: u8, side: u8) -> bool {
-    if side == 0 {
-        sq == DEN_BLUE
-    } else {
-        sq == DEN_RED
-    }
-}
-
-/// Effective rank: 0 when standing on the opponent's trap.
-#[inline]
-fn eff_rank(id: u8, sq: u8) -> u8 {
-    let rank = Board::rank_of(id);
-    let owner = Board::owner_of(id);
-    let on_enemy_trap = if owner == 0 {
-        TRAP_RED.contains(&sq)
-    } else {
-        TRAP_BLUE.contains(&sq)
-    };
-    if on_enemy_trap {
-        0
-    } else {
-        rank
-    }
+/// Column-major square order (ascending Col*9+Row), matching the C# piece-id
+/// list order that drives move generation.
+pub fn column_major() -> &'static [u8; SQUARES] {
+    static ORDER: std::sync::OnceLock<[u8; SQUARES]> = std::sync::OnceLock::new();
+    ORDER.get_or_init(|| {
+        let mut o = [0u8; SQUARES];
+        let mut i = 0;
+        for col in 0..7u8 {
+            for row in 0..9u8 {
+                o[i] = row * 7 + col;
+                i += 1;
+            }
+        }
+        o
+    })
 }
 
 /// Mirror of the C# CaptureResolver/SearchBoard.CanCapture.
-fn can_capture(attacker: u8, attacker_sq: u8, defender: u8, defender_sq: u8) -> bool {
-    let a_rank = Board::rank_of(attacker);
-    let d_rank = Board::rank_of(defender);
-
-    // Rat captures Elephant from land only
+#[inline]
+pub fn can_capture(attacker: u8, attacker_sq: u8, defender: u8, defender_sq: u8) -> bool {
+    let a_rank = rank_of(attacker);
+    let d_rank = rank_of(defender);
     if a_rank == 1 && d_rank == 8 {
         return !is_water(attacker_sq);
     }
-    // Elephant cannot capture Rat
     if a_rank == 8 && d_rank == 1 {
         return false;
     }
-    // Rat vs Rat is unconditional (land or water, even from a trap square)
     if a_rank == 1 && d_rank == 1 {
         return true;
     }
-    // Rat in water cannot be captured by any other piece on land
     if d_rank == 1 && is_water(defender_sq) && !is_water(attacker_sq) {
         return false;
     }
-
     eff_rank(attacker, attacker_sq) >= eff_rank(defender, defender_sq)
 }
 
 // ---- Static move tables -----------------------------------------------------
 
-/// Neighbors per square (orthogonal, in-bounds).
 fn build_neighbors() -> Vec<Vec<u8>> {
     let mut table = Vec::with_capacity(SQUARES);
     for sq in 0..SQUARES as u8 {
@@ -103,10 +70,6 @@ struct Jump {
     mid_count: u8,
 }
 
-/// All jump targets from (c, r) whose entire path is water and whose landing
-/// is land, mirroring SearchBoard.BuildJumps: distances scanned from 8 down
-/// to 2, first valid crossing wins (exactly one per direction on this
-/// terrain). Row-changing jumps are included only for the Lion.
 fn build_jumps(c: i8, r: i8, include_row_change: bool) -> Vec<Jump> {
     let mut jumps = Vec::with_capacity(4);
     let dirs: &[(i8, i8)] = if include_row_change {
@@ -122,7 +85,6 @@ fn build_jumps(c: i8, r: i8, include_row_change: bool) -> Vec<Jump> {
                 continue;
             }
             let target = (tr * 7 + tc) as u8;
-            // Every crossed square must be water; the landing must be land.
             let mut all_water = true;
             let mut mids = [0u8; 3];
             let mut mid_count = 0;
@@ -139,7 +101,7 @@ fn build_jumps(c: i8, r: i8, include_row_change: bool) -> Vec<Jump> {
             }
             if all_water && mid_count > 0 && !is_water(target) {
                 jumps.push(Jump { target, mids, mid_count: mid_count as u8 });
-                break; // first valid crossing wins
+                break;
             }
         }
     }
@@ -165,98 +127,211 @@ fn tables() -> &'static Tables {
     })
 }
 
-// ---- Generation -------------------------------------------------------------
-
-fn try_make_move(board: &Board, side: u8, id: u8, from: u8, to: u8, out: &mut Move) -> bool {
-    // Cannot move into own den
-    if is_own_den(to, side) {
-        return false;
-    }
-    // Only the Rat may enter water
-    if is_water(to) && Board::rank_of(id) != 1 {
-        return false;
-    }
-    let occ = board.occupant(to as usize);
-    if occ != 0 {
-        if Board::owner_of(occ) == side {
-            return false; // own piece
-        }
-        if !can_capture(id, from, occ, to) {
-            return false;
-        }
-        out.from = from;
-        out.to = to;
-        return true;
-    }
-    out.from = from;
-    out.to = to;
-    true
+/// Returns the neighbors of a square.
+pub fn neighbors(sq: u8) -> &'static [u8] {
+    &tables().neighbors[sq as usize]
 }
 
+/// True when the Lion/Tiger at `from` has a legal, rat-free jump to `target`.
+pub fn can_jump_to(board: &Board, id: u8, from: u8, target: u8) -> bool {
+    let rank = rank_of(id);
+    let jumps: Option<&Vec<Jump>> = if rank == 7 {
+        Some(&tables().lion_jumps[from as usize])
+    } else if rank == 6 {
+        Some(&tables().tiger_jumps[from as usize])
+    } else {
+        None
+    };
+    match jumps {
+        None => false,
+        Some(jumps) => {
+            for j in jumps {
+                if j.target == target && !jump_blocked(board, j) {
+                    return true;
+                }
+            }
+            false
+        }
+    }
+}
+
+fn jump_blocked(board: &Board, j: &Jump) -> bool {
+    for m in 0..j.mid_count as usize {
+        let mid = j.mids[m];
+        let occ = board.squares[mid as usize];
+        if occ != 0 && rank_of(occ) == 1 {
+            return true;
+        }
+    }
+    false
+}
+
+// ---- Make / unmake ----------------------------------------------------------
+
+pub struct Undo {
+    pub prev_winner: u8,
+}
+
+impl Board {
+    fn try_make(&self, side: u8, id: u8, from: u8, to: u8) -> Option<Move> {
+        if is_own_den(to, side) {
+            return None;
+        }
+        if is_water(to) && rank_of(id) != 1 {
+            return None;
+        }
+        let occ = self.squares[to as usize];
+        if occ != 0 {
+            if owner_of(occ) == side {
+                return None;
+            }
+            if !can_capture(id, from, occ, to) {
+                return None;
+            }
+            return Some(Move { from, to, captured_id: occ, enters_den: false });
+        }
+        Some(Move { from, to, captured_id: 0, enters_den: is_opp_den(to, side) })
+    }
+
+    /// Applies a move in place, returning the undo data (mirrors SearchBoard.MakeMove).
+    pub fn make_move(&mut self, m: &Move) -> Undo {
+        let side = self.turn;
+        let id = self.squares[m.from as usize];
+        let prev_winner = self.winner;
+
+        let z = zobrist();
+        let zid = type_of(id) as usize;
+        self.hash ^= z.piece_keys[m.from as usize][zid];
+        self.squares[m.from as usize] = 0;
+
+        if m.captured_id != 0 {
+            let opp = (side ^ 1) as usize;
+            self.count[opp] -= 1;
+            self.hash ^= z.piece_keys[m.to as usize][type_of(m.captured_id) as usize];
+            if self.count[opp] == 0 {
+                self.winner = side; // total elimination
+            }
+        }
+
+        self.squares[m.to as usize] = id;
+        self.hash ^= z.piece_keys[m.to as usize][zid];
+
+        if m.enters_den {
+            self.winner = side;
+        }
+
+        self.hash ^= z.turn_key;
+        self.turn ^= 1;
+        Undo { prev_winner }
+    }
+
+    /// Undoes make_move (mirrors SearchBoard.UnmakeMove).
+    pub fn unmake_move(&mut self, m: &Move, u: &Undo) {
+        let side = self.turn ^ 1;
+        let id = self.squares[m.to as usize];
+
+        let z = zobrist();
+        let zid = type_of(id) as usize;
+        self.hash ^= z.turn_key;
+        self.squares[m.to as usize] = if m.captured_id != 0 { m.captured_id } else { 0 };
+        self.hash ^= z.piece_keys[m.to as usize][zid];
+
+        if m.captured_id != 0 {
+            let opp = (side ^ 1) as usize;
+            self.count[opp] += 1;
+            self.hash ^= z.piece_keys[m.to as usize][type_of(m.captured_id) as usize];
+        }
+
+        self.squares[m.from as usize] = id;
+        self.hash ^= z.piece_keys[m.from as usize][zid];
+        self.winner = u.prev_winner;
+        self.turn = side;
+    }
+}
+
+// ---- Generation -------------------------------------------------------------
+
 /// Generates all legal moves for `side` into `buf`; returns the count.
+/// Pieces are iterated in column-major (ascending Col*9+Row) order.
 pub fn generate_moves(board: &Board, side: u8, buf: &mut [Move]) -> usize {
     let t = tables();
     let mut n = 0;
-    for sq in 0..SQUARES as u8 {
-        let id = board.occupant(sq as usize);
-        if id == 0 || Board::owner_of(id) != side {
+    for &sq in column_major() {
+        let id = board.squares[sq as usize];
+        if id == 0 || owner_of(id) != side {
             continue;
         }
-        let rank = Board::rank_of(id);
+        let rank = rank_of(id);
 
         for &to in &t.neighbors[sq as usize] {
-            if try_make_move(board, side, id, sq, to, &mut buf[n]) {
+            if let Some(m) = board.try_make(side, id, sq, to) {
+                buf[n] = m;
                 n += 1;
             }
         }
 
-        let jumps: &[Jump] = if rank == 7 {
-            &t.lion_jumps[sq as usize]
+        let jumps: Option<&Vec<Jump>> = if rank == 7 {
+            Some(&t.lion_jumps[sq as usize])
         } else if rank == 6 {
-            &t.tiger_jumps[sq as usize]
+            Some(&t.tiger_jumps[sq as usize])
         } else {
-            &[]
+            None
         };
-        for jump in jumps {
-            // A rat on any crossed water square blocks the jump.
-            let mut blocked = false;
-            for m in 0..jump.mid_count as usize {
-                let mid = jump.mids[m];
-                if board.occupant(mid as usize) != 0 && Board::rank_of(board.occupant(mid as usize)) == 1 {
-                    blocked = true;
-                    break;
+        if let Some(jumps) = jumps {
+            for j in jumps {
+                if jump_blocked(board, j) {
+                    continue;
                 }
-            }
-            if blocked {
-                continue;
-            }
-            if try_make_move(board, side, id, sq, jump.target, &mut buf[n]) {
-                n += 1;
+                if let Some(m) = board.try_make(side, id, sq, j.target) {
+                    buf[n] = m;
+                    n += 1;
+                }
             }
         }
     }
     n
 }
 
-/// Counts the nodes reachable in exactly `depth` plies (copy-make recursion;
-/// sufficient for the spike's count-parity gate).
-pub fn perft(board: &Board, side: u8, depth: u8) -> u64 {
-    if depth == 0 {
-        return 1;
+/// Captures plus enemy-den entries (the moves searched by quiescence).
+pub fn generate_captures(board: &Board, side: u8, buf: &mut [Move]) -> usize {
+    let t = tables();
+    let mut n = 0;
+    for &sq in column_major() {
+        let id = board.squares[sq as usize];
+        if id == 0 || owner_of(id) != side {
+            continue;
+        }
+        let rank = rank_of(id);
+
+        for &to in &t.neighbors[sq as usize] {
+            if let Some(m) = board.try_make(side, id, sq, to) {
+                if m.is_capture() || m.enters_den {
+                    buf[n] = m;
+                    n += 1;
+                }
+            }
+        }
+
+        let jumps: Option<&Vec<Jump>> = if rank == 7 {
+            Some(&t.lion_jumps[sq as usize])
+        } else if rank == 6 {
+            Some(&t.tiger_jumps[sq as usize])
+        } else {
+            None
+        };
+        if let Some(jumps) = jumps {
+            for j in jumps {
+                if jump_blocked(board, j) {
+                    continue;
+                }
+                if let Some(m) = board.try_make(side, id, sq, j.target) {
+                    if m.is_capture() || m.enters_den {
+                        buf[n] = m;
+                        n += 1;
+                    }
+                }
+            }
+        }
     }
-    let mut buf = [Move { from: 0, to: 0 }; MAX_MOVES];
-    let count = generate_moves(board, side, &mut buf);
-    if depth == 1 {
-        return count as u64;
-    }
-    let mut nodes = 0u64;
-    for i in 0..count {
-        let m = buf[i];
-        let mut child = *board;
-        child.squares[m.to as usize] = child.squares[m.from as usize];
-        child.squares[m.from as usize] = 0;
-        child.turn ^= 1;
-        nodes += perft(&child, side ^ 1, depth - 1);
-    }
-    nodes
+    n
 }

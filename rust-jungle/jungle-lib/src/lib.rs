@@ -1,10 +1,31 @@
-//! Jungle (Dou Shou Qi) core for the WASM port spike: board, movegen, perft.
-//! Line-for-line port of the C# `SearchBoard` (this spike covers board +
-//! movegen + perft only; parity is move-count parity against the C# oracle).
+//! Jungle (Dou Shou Qi) core for the WASM port: board, movegen, Zobrist.
 
 pub mod board;
 pub mod movegen;
+pub mod netrand;
 pub mod zobrist;
 
-pub use board::Board;
-pub use movegen::{generate_moves, perft};
+pub use board::{Board, Move, NO_WINNER, SQUARES};
+pub use movegen::{generate_moves, generate_captures, can_jump_to, neighbors, column_major, MAX_MOVES};
+
+/// Counts nodes reachable in exactly `depth` plies via make/unmake (count
+/// parity only; the order parity lives in the CLI).
+pub fn perft(board: &Board, side: u8, depth: u8) -> u64 {
+    if depth == 0 {
+        return 1;
+    }
+    let mut buf = [Move { from: 0, to: 0, captured_id: 0, enters_den: false }; MAX_MOVES];
+    let count = generate_moves(board, side, &mut buf);
+    if depth == 1 {
+        return count as u64;
+    }
+    let mut nodes = 0u64;
+    let mut child = *board;
+    for i in 0..count {
+        let m = buf[i];
+        let undo = child.make_move(&m);
+        nodes += perft(&child, side ^ 1, depth - 1);
+        child.unmake_move(&m, &undo);
+    }
+    nodes
+}

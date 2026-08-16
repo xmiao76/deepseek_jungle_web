@@ -1,17 +1,33 @@
-//! Placeholder Zobrist keys. The spike only needs move-count parity, so the
-//! hash values need not match the C# engine yet — but the keys must be
-//! deterministic. Full hash parity (C# Random(42) sequence) lands with the
-//! full port.
+//! Zobrist hashing — byte-identical to the C# `Zobrist` class (Random(42) +
+//! NextBytes, little-endian). 63 squares x 16 piece types + a turn key.
 
-pub fn piece_key(_sq: usize, _piece_type: usize) -> u64 {
-    // xorshift64* with a fixed seed, indexed deterministically.
-    let mut x = 0x9E37_79B9_7F4A_7C15u64 ^ (0x0100_0000_0000 * _sq as u64 + 0x0001_0000_0000 * _piece_type as u64 + 1);
-    x ^= x >> 12;
-    x ^= x << 25;
-    x ^= x >> 27;
-    x.wrapping_mul(0x2545_F491_4F6C_DD1D)
+use crate::netrand::NetRandom;
+use crate::board::SQUARES;
+
+pub const POSITION_COUNT: usize = SQUARES; // 63
+pub const PIECE_TYPES: usize = 16;
+
+pub struct Zobrist {
+    pub piece_keys: [[u64; PIECE_TYPES]; POSITION_COUNT],
+    pub turn_key: u64,
 }
 
-pub fn turn_key() -> u64 {
-    0xDEAD_BEEF_CAFE_F00D
+impl Zobrist {
+    pub fn new() -> Self {
+        let mut rng = NetRandom::new(42);
+        let mut piece_keys = [[0u64; PIECE_TYPES]; POSITION_COUNT];
+        for p in 0..POSITION_COUNT {
+            for i in 0..PIECE_TYPES {
+                piece_keys[p][i] = rng.next_u64();
+            }
+        }
+        let turn_key = rng.next_u64();
+        Zobrist { piece_keys, turn_key }
+    }
+}
+
+impl Default for Zobrist {
+    fn default() -> Self {
+        Self::new()
+    }
 }

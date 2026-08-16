@@ -258,6 +258,53 @@ internal static class BenchPositions
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Dumps the piece-id assignment order and the move-generation order for the
+    /// start position + seeded fuzz positions — the oracle for the Rust port's
+    /// move ordering (ImmutableDictionary iteration order drives id assignment,
+    /// which drives move generation order, which drives every node count).
+    /// </summary>
+    internal static int RunOrderDump(string[] args)
+    {
+        string outPath = Args.ReadString(args, "--order-dump")
+            ?? throw new InvalidOperationException("--order-dump <file> is required.");
+        int fuzz = Args.ReadInt(args, "--fuzz", 8);
+        int fuzzSeed = Args.ReadInt(args, "--seed", 20240816);
+
+        var positions = new List<GameState> { GameState.CreateInitial() };
+        for (int f = 0; f < fuzz; f++)
+        {
+            var rng = new Random(fuzzSeed * 397 + f);
+            int plies = 1 + rng.Next(40);
+            var s = GameState.CreateInitial();
+            for (int p = 0; p < plies && s.Status == GameStatus.InProgress; p++)
+            {
+                var legal = MoveGenerator.GenerateLegalMoves(s, s.CurrentTurn);
+                if (legal.Count == 0) break;
+                s = GameController.ApplyMove(s, legal[rng.Next(legal.Count)]);
+            }
+            positions.Add(s);
+        }
+
+        using var writer = new StreamWriter(outPath);
+        var movesBuf = new SearchMove[SearchBoard.MaxMovesPerPly];
+        for (int i = 0; i < positions.Count; i++)
+        {
+            var board = SearchBoard.FromGameState(positions[i]);
+            int side = (int)positions[i].CurrentTurn;
+
+            // Move-generation order, preceded by the hex layout so the Rust side
+            // can reconstruct the exact position.
+            int n = board.GenerateMoves(side, movesBuf);
+            var moveTexts = new List<string>();
+            for (int m = 0; m < n; m++)
+                moveTexts.Add($"{movesBuf[m].From}>{movesBuf[m].To}");
+            writer.WriteLine($"P{i} hex={HexLayout(positions[i])} stm={side} moves={string.Join(",", moveTexts)}");
+        }
+        Console.WriteLine($"Order dump → {outPath}.");
+        return 0;
+    }
+
     private static void DumpSearch(StreamWriter? writer, string label, GameState state, int depth)
     {
         // Fresh engine per search: no TT/history carryover. A generous wall-clock
