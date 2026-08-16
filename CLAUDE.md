@@ -101,6 +101,16 @@ Ported verbatim from the desktop: `Tablebase/TablebaseIndex.cs`, `TablebaseFile.
 
 This is the same outcome the desktop recorded — it built this harness and never adopted a tuned vector (`EvalParameters.Default` is still hand-tuned there). Verdict: **park the weights**; `weights.json` is gitignored. The concrete next step for a future round is per-engine weight threading (an `EvalParameters` field on `MinimaxEngine` + a `useTuned` ctor flag + `--tunedA/B` arena flags) so the `--legacyTunedB` strength gate can actually run — and better labels (deeper `--depth`, or the P7 tablebase improving endgame labels, or stronger base engines) before refitting.
 
+### P9b (strength program): Rust engine port — in progress
+
+The P9a spike passed (804/804 perft parity, 33.7M nps in Chromium), so the full port is underway in `rust-jungle/` (workspace `jungle-lib` + `jungle-cli` + `jungle-wasm`). The engine must be **byte-exact** (node-count parity at fixed depth) against the C# oracle — the strongest possible gate, since a deterministic single-threaded port with verbatim TT/ordering semantics produces identical node counts if correct.
+
+**Verified byte-exact (the foundations)**: `netrand.rs` ports .NET's `Random(42)` Knuth-subtractive generator (Zobrist keys match 1010/1010); `board.rs`/`movegen.rs` iterate pieces in the C# `ImmutableDictionary` order (ascending `Col*9+Row` = column-major — the order that drives every node count), with incremental-hash make/unmake (count+hash round-trip pinned by a unit test); `eval.rs` is the 24-feature × 24-weight linear eval, static + mobility, byte-exact (408 static + 310 full checks). SEE, TT (4-bucket generation-tagged depth-preferred), move ordering (killers/history/counter-move/capture-history + SEE-sign), open-addressing repetition, and the full PVS search (aspiration, null-move+verify, futility, LMR, LMP, den-setup extension, qsearch with SEE ordering) are all ported.
+
+**Parity harness**: C# Bench oracle dumps `--zobrist-dump`, `--order-dump`, `--eval-dump`, `--search-dump` (hex layout + history hashes + fixed-depth node count + best move, `useTablebase: false`); `jungle-cli` `zobrist-verify`/`order-parity`/`eval-verify`/`search-parity`. Gates green: Zobrist 0, move-order 61/61, perft 804/804, eval 408+310.
+
+**KNOWN GAP**: `search-parity` produces the **same best move 110/110** but node counts diverge slightly at depth ≥ 3 (0.1-4% in the pure/legacy config, up to 23% in the default config). Depth 1-2 are exact. The divergence is a subtle stateful bug (TT or killer/history state, or a feature interaction) still under investigation — the G1 node-equality gate is **not yet green**, so the C# engine remains the shipped backend. The `--legacy-eval/--legacy-search/--legacy-p5/--legacy-p6` flags on both sides isolate features (the pure legacy config reduces the divergence to 2-45 nodes, confirming the core is nearly right).
+
 ### Coverage gate fix
 
 `scripts/check-coverage.ps1` measured the aggregate `line-rate` across ALL referenced projects (Core + Bench + Web), so the P7/P8 additions (Bench's `TuneRunner`/`TbRunner` at 7%) dropped it from 80.5% to 62.3% even though Core was at 81.1%. Fixed to filter to `JungleGame.Core` classes only — the gate's target is the engine, matching the desktop's authoritative script. Core line rate: **81.1%** (gate 80%).
