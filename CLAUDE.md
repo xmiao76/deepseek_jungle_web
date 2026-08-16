@@ -64,7 +64,28 @@ Candidates behind the `legacyP6` ctor flag (A/B gate = arena with `--legacyP6B`)
 - **Capture history**: `[9, 63, 63]` by victim rank, +depth² on capture cutoffs, capped at 500 in scoring, aged with the history table. Heuristic updates centralized in `MoveOrdering.OnBetaCutoff`.
 - NOT ported: the planned TT bucket-scan probe fix — `Store` updates same-hash entries in place, so a bucket can never hold two entries with one hash and the first match is authoritative (the fix was a no-op; the probe is unchanged with a clarifying comment).
 
-**P3 recorded results (2026-08-16)**: code + 4 new P6FeatureTests committed with all 198 engine tests green, suite 11/11, node gate passing on the P2 baseline; bench 2 s ≈ **766k nps / depth 12** (SEE-sign ordering costs ~30% nps — the arena gate decides the trade). Arena gate (`--legacyP6B`, 1000 ms both, imbalanced, pooled seeds): RESULT-PENDING — revert this bundle if the gate fails.
+**P3 recorded results (2026-08-16)**: code + 4 new P6FeatureTests committed with all 198 engine tests green, suite 11/11, node gate passing on the P2 baseline; bench 2 s ≈ **766k nps / depth 12** (SEE-sign ordering costs ~30% nps — the arena gate decides the trade).
+
+**P3 gate — PASS.** `--legacyP6B`, 500 ms both sides, imbalanced ×8 per arena, 4 pooled seeds (the 1000 ms design was abandoned interactively: equal-strength games run 200+ moves ≈ 6-10 min each; the 500 ms protocol costs ~1.2 min/game with 4 parallel arenas — future gates use this). Pooled: **A 25 / B 12 across 37 decisive = 67.6%** (Wilson [51.5%, 80.4%], p = 0.047). Per-seed: 6-6 (101), 6-4 (202), 5-1 (303), 8-1 (404). Verdict: the bundle ships (stronger than the desktop's own 6-6 P4-search acceptance).
+
+### P4 (strength program): search bundle B — qsearch TT, IID, razoring, alpha-raise history
+
+Implemented behind `legacyP7`: quiescence TT (depth-0 entries, deeper entries valid for depth-0 probes, fail-high → LowerBound, in-window → Exact, fail-lows not stored), IID (depth ≥ 5, no TT move, null-window around the static eval, re-probe for the ordering move, never at the root), razoring (depth 2, staticEval + 200 ≤ alpha → return staticEval; >6 pieces, >2 own pieces, non-mate windows), alpha-raise history (+depth²/4 floored at 1, quiets only). Gate: RESULT-PENDING (`--legacyP7B`).
+
+### P5 (strength program): linear eval + P8 candidates
+
+- `Eval/EvalParameters.cs` (26 weights), `Eval/EvalFeatures.cs`, `Eval/EvalFeatureExtractor.cs`; `EvaluationFunction` is a thin wrapper (score-identity with the old hand-rolled loops pinned by `LinearEvalIdentityTests` against the verbatim `StaticEvalReference` oracle — ~15k differential comparisons, all four legacyEval × legacyP5 combos). `SetParameters`/`GetParameters` hooks for the tuner.
+- PSQT-lite: the endgame advance term split into per-distance buckets (weights 50/25 reproduce the historical (3−dist)×25 exactly; the tuner fits each bucket independently).
+- Exact-delta tests parameterized against `EvalParameters.Default` weights.
+- **P8 candidates behind `legacyP8`**: endgame rat-den guard (rat within 2 of own den, (3−dist)×15) and water-screened elephant fear relief (elephant-rat fear pairs with water between lose their penalty, ×15). Explicitly checked against the forbidden P4 list (trap control, own-trap defense, river control, rat-threat, den-race) — neither overlaps. **Tapering deferred** (piece-count interpolation breaks the tuner's pure linear form; revisit after the tuner exists). Screens: RESULT-PENDING (`--legacyP8B`).
+
+### P6 (strength program): contempt + easy-move stop + depth skip
+
+Implemented: draw contempt (`DrawScore`: static eval ≥ 0 → −contempt, else +contempt; default 30, 0 = neutral; applied at the repetition return, never stored in the TT), easy-move stop (best move stable ≥ 2 iterations at depth ≥ 6 and ≥ 35% budget → break), time-adaptive depth skip (depth ≥ 10, ≥ 55% budget, previous iteration ≥ 15% budget → break), behind `legacyTime`; `maxNodes` node budget wired (P2, documented here). Gates: RESULT-PENDING (`--contemptA 30 --contemptB 0`; `--legacyTimeB`).
+
+### P7 (strength program): tablebase (2+3-piece WDL, embedded)
+
+Ported verbatim from the desktop: `Tablebase/TablebaseIndex.cs`, `TablebaseFile.cs`, `TablebaseBuilder.cs`, `TablebaseProbe.cs` (+ `InitializeFromGzip` for the browser + `Load(byte[])`); `SearchBoard.GenerateMovesCompact` + `FromPackedPieces`; `TbRunner` (`--tb-build [--no-dtm] [--embed-path]`, `--tb-verify`). Probes in PVSearch (after repetition, before TT; wins stored at depth 127, draws → DrawScore, never stored), qsearch top, and root ordering seed; `legacyTb` gates the A/B; the engine ctor calls `TablebaseProbe.Initialize()` (native paths); `GameService` fetches `tablebases/jungle3.tb.gz` (wwwroot) lazily — search degrades silently until loaded. WDL-only `jungle3.tb` = 29 MB, gzip asset = **2.1 MB**. `--tb-verify --samples 5000`: replay 1.0% fortress-class mismatches (≤ 2% expected, reported not gated), search cross-check 100/100. **Interaction pin**: with a table loaded, a TB-proven but slower capture can outrank a pinned horizon mate via the forced-win early exit — pure-search pins (MinimaxEngineTests mate tests, the tactical suite) run with `useTablebase: false` (desktop convention). NOTE: the desktop's own DTM table in `%LOCALAPPDATA%\JungleGame\tablebases` is picked up by the shared search path — native gates hide it except the TB gate (which uses `JUNGLE_TB_PATH`). Gate: RESULT-PENDING (`--legacyTbB`).
 
 ## Key behavioral constraints
 
