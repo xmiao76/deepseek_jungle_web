@@ -11,7 +11,7 @@ async function load() {
     env: { now_ms: () => performance.now() },
   };
   const result = await WebAssembly.instantiateStreaming(
-    fetch("js/rust-engine.wasm"),
+    fetch(new URL("rust-engine.wasm", self.location.href)),
     imports,
   );
   instance = result.instance;
