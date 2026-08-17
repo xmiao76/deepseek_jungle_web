@@ -101,15 +101,20 @@ Ported verbatim from the desktop: `Tablebase/TablebaseIndex.cs`, `TablebaseFile.
 
 This is the same outcome the desktop recorded — it built this harness and never adopted a tuned vector (`EvalParameters.Default` is still hand-tuned there). Verdict: **park the weights**; `weights.json` is gitignored. The concrete next step for a future round is per-engine weight threading (an `EvalParameters` field on `MinimaxEngine` + a `useTuned` ctor flag + `--tunedA/B` arena flags) so the `--legacyTunedB` strength gate can actually run — and better labels (deeper `--depth`, or the P7 tablebase improving endgame labels, or stronger base engines) before refitting.
 
-### P9b (strength program): Rust engine port — in progress
+### P9b (strength program): Rust engine port — parity GREEN
 
-The P9a spike passed (804/804 perft parity, 33.7M nps in Chromium), so the full port is underway in `rust-jungle/` (workspace `jungle-lib` + `jungle-cli` + `jungle-wasm`). The engine must be **byte-exact** (node-count parity at fixed depth) against the C# oracle — the strongest possible gate, since a deterministic single-threaded port with verbatim TT/ordering semantics produces identical node counts if correct.
+The P9a spike passed (804/804 perft parity, 33.7M nps in Chromium), so the full port lives in `rust-jungle/` (workspace `jungle-lib` + `jungle-cli` + `jungle-wasm`). The engine is **byte-exact** (node-count parity at fixed depth) against the C# oracle — the strongest possible gate.
 
-**Verified byte-exact (the foundations)**: `netrand.rs` ports .NET's `Random(42)` Knuth-subtractive generator (Zobrist keys match 1010/1010); `board.rs`/`movegen.rs` iterate pieces in the C# `ImmutableDictionary` order (ascending `Col*9+Row` = column-major — the order that drives every node count), with incremental-hash make/unmake (count+hash round-trip pinned by a unit test); `eval.rs` is the 24-feature × 24-weight linear eval, static + mobility, byte-exact (408 static + 310 full checks). SEE, TT (4-bucket generation-tagged depth-preferred), move ordering (killers/history/counter-move/capture-history + SEE-sign), open-addressing repetition, and the full PVS search (aspiration, null-move+verify, futility, LMR, LMP, den-setup extension, qsearch with SEE ordering) are all ported.
+**Root-cause note (the subtle bug)**: the C# `SearchBoard` maintains a per-side piece-id list (`_ids`) that is **swap-removed on capture**, so move-generation order changes dynamically as captures reorder the list. The first Rust attempt iterated squares in a fixed column-major order — correct only until the first capture. Fixed by carrying `pos_of` + `ids[2][16]` with the exact swap-remove make/unmake (undo restores the swap index).
 
-**Parity harness**: C# Bench oracle dumps `--zobrist-dump`, `--order-dump`, `--eval-dump`, `--search-dump` (hex layout + history hashes + fixed-depth node count + best move, `useTablebase: false`); `jungle-cli` `zobrist-verify`/`order-parity`/`eval-verify`/`search-parity`. Gates green: Zobrist 0, move-order 61/61, perft 804/804, eval 408+310.
+**Parity harness** (C# Bench oracle dumps + `jungle-cli` verifiers) — all green:
+- Zobrist: 1010/1010 (byte-exact .NET `Random(42)` Knuth PRNG in `netrand.rs`).
+- Perft: 804/804; move-order 61/61; eval static 408 + full 310.
+- **Search node parity (G1): 430/430, 0 mismatches** — both the default config and the `--legacy-search --legacy-p5 --legacy-p6` config, at depths 1-6 (suite) and 1-4 (fuzz), node counts AND best moves byte-identical.
 
-**KNOWN GAP**: `search-parity` produces the **same best move 110/110** but node counts diverge slightly at depth ≥ 3 (0.1-4% in the pure/legacy config, up to 23% in the default config). Depth 1-2 are exact. The divergence is a subtle stateful bug (TT or killer/history state, or a feature interaction) still under investigation — the G1 node-equality gate is **not yet green**, so the C# engine remains the shipped backend. The `--legacy-eval/--legacy-search/--legacy-p5/--legacy-p6` flags on both sides isolate features (the pure legacy config reduces the divergence to 2-45 nodes, confirming the core is nearly right).
+`board.rs`/`movegen.rs`/`eval.rs`/`see.rs`/`tt.rs`/`moveorder.rs`/`rep.rs`/`search.rs` are the full port (PVS + aspiration, null-move+verify, futility, LMR, LMP, den-setup extension, qsearch with SEE ordering, capture history, killers/counter-move).
+
+**Remaining (P9c)**: tablebase probing is not yet in the Rust search (the parity dumps run `useTablebase: false`); browser integration (`?engine=rust` backend + `EngineBackend` at the `Index.razor:290` call site) and the G2 native-nps / G3 wasm-nps / G4 browser-arena / G5 full-game gates are still to run. The C# engine remains the shipped backend until G4 passes.
 
 ### Coverage gate fix
 
