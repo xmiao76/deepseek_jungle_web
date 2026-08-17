@@ -1,6 +1,6 @@
 <!doctype html>
 <html>
-<head><meta charset="utf-8"><title>jungle-wasm bench</title></head>
+<head><meta charset="utf-8"><title>jungle-wasm search bench</title></head>
 <body>
   <pre id="out">loading…</pre>
   <script>
@@ -9,15 +9,17 @@
       const { instance } = await WebAssembly.instantiateStreaming(
         fetch("jungle_wasm.wasm"), {});
       const perft = instance.exports.perft;
+      const searchNodes = instance.exports.search_nodes;
       const perft4 = Number(perft(4));
 
-      // JS-driven bench: run perft depths until 2s of wall time elapse.
+      // Warm up, then time a depth-10 search (several seconds of pure search).
+      searchNodes(6);
       const budgetMs = 2000;
       const t0 = performance.now();
       let nodes = 0;
-      let depth = 1;
+      let depth = 8;
       while (performance.now() - t0 < budgetMs) {
-        nodes += Number(perft(depth));
+        nodes += Number(searchNodes(depth));
         depth++;
       }
       const elapsed = performance.now() - t0;

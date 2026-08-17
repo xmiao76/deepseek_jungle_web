@@ -114,7 +114,11 @@ The P9a spike passed (804/804 perft parity, 33.7M nps in Chromium), so the full 
 
 `board.rs`/`movegen.rs`/`eval.rs`/`see.rs`/`tt.rs`/`moveorder.rs`/`rep.rs`/`search.rs` are the full port (PVS + aspiration, null-move+verify, futility, LMR, LMP, den-setup extension, qsearch with SEE ordering, capture history, killers/counter-move).
 
-**Remaining (P9c)**: tablebase probing is not yet in the Rust search (the parity dumps run `useTablebase: false`); browser integration (`?engine=rust` backend + `EngineBackend` at the `Index.razor:290` call site) and the G2 native-nps / G3 wasm-nps / G4 browser-arena / G5 full-game gates are still to run. The C# engine remains the shipped backend until G4 passes.
+**Remaining (P9c)**: tablebase probing is not yet in the Rust search (the parity dumps run `useTablebase: false`); browser integration (`?engine=rust` backend + `EngineBackend` at the `Index.razor:290` call site) and the G4 browser-arena / G5 full-game gates are still to run. The C# engine remains the shipped backend until G4 passes.
+
+**Speed gates (measured 2026-08-16)**:
+- **G2 native nps — PASS**: `jungle-cli search-bench 12` = 568,857 nodes at **~1.01M nps**; C# `--bench --depth 12` = 568,857 nodes at ~748k nps — identical node counts (re-confirming parity) and the Rust search is **~36% faster** natively.
+- **G3 wasm nps — PASS decisively**: `jungle_wasm.search_nodes` fixed-depth search in Chromium ≈ **583k nps**, vs the recorded C# AOT-wasm baseline of ~30k nps (README.md: Hard 2000 ms → depth 8, ~61k nodes, ~30k nps) — a **~19× browser speedup**, which at equal time translates directly to several extra plies and much stronger play. `jungle-wasm` also exports `search_packed(hex, turn, depth)` for the real browser backend.
 
 ### Coverage gate fix
 

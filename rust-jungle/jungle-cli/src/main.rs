@@ -214,6 +214,18 @@ fn main() {
             println!("zobrist-verify: {mismatches} mismatches");
             std::process::exit(if mismatches == 0 { 0 } else { 1 });
         }
+        "search-bench" => {
+            // Fixed-depth search from the start position; reports nodes + nps
+            // (apples-to-apples with the C# --bench --depth N).
+            let depth: i32 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(12);
+            let mut board = Board::initial();
+            let mut search = Search::new(false, false, false, false);
+            let start = std::time::Instant::now();
+            let best = search.search_best_move(&mut board, depth, &[]);
+            let elapsed = start.elapsed().as_secs_f64().max(0.000001);
+            let nps = search.nodes as f64 / elapsed;
+            println!("search-bench depth={} nodes={} nps={:.0} best={:?}", depth, search.nodes, nps, best);
+        }
         "bench" => {
             let ms: u64 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(2000);
             let b = Board::initial();
