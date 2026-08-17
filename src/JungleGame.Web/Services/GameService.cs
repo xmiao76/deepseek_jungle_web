@@ -182,6 +182,10 @@ public sealed class GameService
     public void StartNewGame()
     {
         CancelAiSearch();
+        // On a genuine game reset, abandon any in-flight Rust search by
+        // restarting the worker (a rare event, so the tablebase reload cost is
+        // acceptable here — unlike the per-move CancelAiSearch path).
+        Rust?.Reset();
         GameEpoch++;
         State = GameState.CreateInitial();
         _trackedMoves = new List<Move>();
@@ -237,7 +241,11 @@ public sealed class GameService
         AiCts?.Cancel();
         AiCts?.Dispose();
         AiCts = null;
-        Rust?.Reset();
+        // NOTE: the Rust worker is NOT reset here. This is called before every
+        // AI move, and terminating the worker would force the ~31 MB tablebase
+        // (gzip decompress + SHA-256) to reload on every single move — a ~1.4 s
+        // per-move latency tax. Stale-search abandonment is already handled by
+        // the page's GameEpoch guard, so the worker stays alive across moves.
     }
 
     // --- Interaction ---------------------------------------------------------------------
