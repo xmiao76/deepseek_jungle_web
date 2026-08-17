@@ -68,11 +68,11 @@ impl Search {
         let mut best_score = i32::MIN;
 
         for depth in 1..=max_depth {
-            let mut current_best = i32::MIN;
             let mut current_best_move = best_move;
             let mut search_alpha = if best_score == i32::MIN { i32::MIN + 1 } else { best_score - ASPIRATION_DELTA };
             let mut search_beta = if best_score == i32::MIN { i32::MAX } else { best_score + ASPIRATION_DELTA };
 
+            let mut current_best;
             loop {
                 current_best = i32::MIN;
                 self.order.order_moves(board, &mut root_moves[..move_count], move_count, best_move_for_ordering, 0, -1);
@@ -296,8 +296,10 @@ impl Search {
 
         let side = board.turn;
 
+        let q_mob_side = count_legal_moves(board, side);
+        let q_mob_opp = count_legal_moves(board, side ^ 1);
         let mut stand_pat = if self.legacy_search {
-            evaluate(board, side, count_legal_moves(board, side), count_legal_moves(board, side ^ 1), self.legacy_eval, self.legacy_p5)
+            evaluate(board, side, q_mob_side, q_mob_opp, self.legacy_eval, self.legacy_p5)
         } else {
             evaluate_static(board, side, self.legacy_eval, self.legacy_p5)
         };

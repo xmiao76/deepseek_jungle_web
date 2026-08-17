@@ -220,6 +220,7 @@ fn jump_blocked(board: &Board, j: &Jump) -> bool {
 // ---- Make / unmake ----------------------------------------------------------
 
 pub struct Undo {
+    pub captured_swap_index: u8,
     pub prev_winner: u8,
 }
 
@@ -255,9 +256,19 @@ impl Board {
         self.hash ^= z.piece_keys[m.from as usize][zid];
         self.squares[m.from as usize] = 0;
 
+        let mut captured_swap_index = 0u8;
         if m.captured_id != 0 {
             let opp = (side ^ 1) as usize;
+            let c = self.count[opp] as usize;
+            for i in 0..c {
+                if self.ids[opp][i] == m.captured_id {
+                    self.ids[opp][i] = self.ids[opp][c - 1];
+                    captured_swap_index = i as u8;
+                    break;
+                }
+            }
             self.count[opp] -= 1;
+            self.pos_of[m.captured_id as usize] = NO_WINNER;
             self.hash ^= z.piece_keys[m.to as usize][type_of(m.captured_id) as usize];
             if self.count[opp] == 0 {
                 self.winner = side; // total elimination
@@ -265,6 +276,7 @@ impl Board {
         }
 
         self.squares[m.to as usize] = id;
+        self.pos_of[id as usize] = m.to;
         self.hash ^= z.piece_keys[m.to as usize][zid];
 
         if m.enters_den {
@@ -273,7 +285,7 @@ impl Board {
 
         self.hash ^= z.turn_key;
         self.turn ^= 1;
-        Undo { prev_winner }
+        Undo { captured_swap_index, prev_winner }
     }
 
     /// Undoes make_move (mirrors SearchBoard.UnmakeMove).
@@ -285,11 +297,14 @@ impl Board {
         let zid = type_of(id) as usize;
         self.hash ^= z.turn_key;
         self.squares[m.to as usize] = if m.captured_id != 0 { m.captured_id } else { 0 };
+        self.pos_of[id as usize] = m.from;
         self.hash ^= z.piece_keys[m.to as usize][zid];
 
         if m.captured_id != 0 {
             let opp = (side ^ 1) as usize;
+            self.ids[opp][u.captured_swap_index as usize] = m.captured_id;
             self.count[opp] += 1;
+            self.pos_of[m.captured_id as usize] = m.to;
             self.hash ^= z.piece_keys[m.to as usize][type_of(m.captured_id) as usize];
         }
 
@@ -303,15 +318,14 @@ impl Board {
 // ---- Generation -------------------------------------------------------------
 
 /// Generates all legal moves for `side` into `buf`; returns the count.
-/// Pieces are iterated in column-major (ascending Col*9+Row) order.
+/// Pieces are iterated in the piece-id list order (which changes on capture via
+/// swap-remove), mirroring the C# SearchBoard.GenerateMoves.
 pub fn generate_moves(board: &Board, side: u8, buf: &mut [Move]) -> usize {
     let t = tables();
     let mut n = 0;
-    for &sq in column_major() {
-        let id = board.squares[sq as usize];
-        if id == 0 || owner_of(id) != side {
-            continue;
-        }
+    for i in 0..board.count[side as usize] as usize {
+        let id = board.ids[side as usize][i];
+        let sq = board.pos_of[id as usize];
         let rank = rank_of(id);
 
         for &to in &t.neighbors[sq as usize] {
@@ -347,11 +361,9 @@ pub fn generate_moves(board: &Board, side: u8, buf: &mut [Move]) -> usize {
 pub fn generate_captures(board: &Board, side: u8, buf: &mut [Move]) -> usize {
     let t = tables();
     let mut n = 0;
-    for &sq in column_major() {
-        let id = board.squares[sq as usize];
-        if id == 0 || owner_of(id) != side {
-            continue;
-        }
+    for i in 0..board.count[side as usize] as usize {
+        let id = board.ids[side as usize][i];
+        let sq = board.pos_of[id as usize];
         let rank = rank_of(id);
 
         for &to in &t.neighbors[sq as usize] {

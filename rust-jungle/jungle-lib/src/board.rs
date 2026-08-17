@@ -5,6 +5,7 @@ use crate::zobrist::Zobrist;
 
 pub const SQUARES: usize = 63;
 pub const NO_WINNER: u8 = 255;
+pub const MAX_PIECE_IDS: usize = 33; // ids 1..=32 (0 unused)
 
 // Terrain (byte codes match the C# SearchBoard).
 pub const WATER: [u8; 12] = [22, 23, 29, 30, 36, 37, 25, 26, 32, 33, 39, 40];
@@ -79,6 +80,8 @@ pub fn eff_rank(id: u8, sq: u8) -> u8 {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Board {
     pub squares: [u8; SQUARES], // square -> piece id (type+1), 0 = empty
+    pub pos_of: [u8; MAX_PIECE_IDS], // piece id -> square (NO_WINNER = captured)
+    pub ids: [[u8; 16]; 2],     // per-side piece-id list (order = movegen order)
     pub count: [u8; 2],
     pub turn: u8,
     pub winner: u8,
@@ -89,6 +92,8 @@ impl Board {
     pub fn new() -> Self {
         Board {
             squares: [0; SQUARES],
+            pos_of: [NO_WINNER; MAX_PIECE_IDS],
+            ids: [[0; 16]; 2],
             count: [0, 0],
             turn: 0,
             winner: NO_WINNER,
@@ -97,16 +102,24 @@ impl Board {
     }
 
     /// Builds from a packed (type, square) list — types are (animal-1)*2+owner.
-    /// Piece ids are type+1 (the corpus has no duplicate animals per side).
+    /// The id list is built in ascending-hash order (column-major), matching the
+    /// C# FromGameState which iterates the ImmutableDictionary in that order.
     pub fn from_packed(types: &[u8], squares: &[u8], turn: u8) -> Board {
+        let mut idx: Vec<usize> = (0..types.len()).collect();
+        idx.sort_by_key(|&i| {
+            let sq = squares[i] as usize;
+            (sq % 7) * 9 + sq / 7
+        });
         let mut b = Board::new();
         b.turn = turn;
         let mut hash = 0u64;
-        for i in 0..types.len() {
+        for &i in &idx {
             let t = types[i];
             let sq = squares[i] as usize;
             let id = t + 1;
             b.squares[sq] = id;
+            b.pos_of[id as usize] = sq as u8;
+            b.ids[(t & 1) as usize][b.count[(t & 1) as usize] as usize] = id;
             b.count[(t & 1) as usize] += 1;
             hash ^= zobrist().piece_keys[sq][t as usize];
         }
@@ -123,13 +136,19 @@ impl Board {
         let mut b = Board::new();
         b.turn = turn;
         let mut hash = 0u64;
-        for sq in 0..SQUARES {
-            let id = grid[sq];
-            if id != 0 {
-                let t = (id - 1) % 16;
-                b.squares[sq] = id;
-                b.count[(t & 1) as usize] += 1;
-                hash ^= zobrist().piece_keys[sq][t as usize];
+        // Ascending-hash order = column-major (col*9+row).
+        for col in 0..7u8 {
+            for row in 0..9u8 {
+                let sq = (row * 7 + col) as usize;
+                let id = grid[sq];
+                if id != 0 {
+                    let t = (id - 1) % 16;
+                    b.squares[sq] = id;
+                    b.pos_of[id as usize] = sq as u8;
+                    b.ids[(t & 1) as usize][b.count[(t & 1) as usize] as usize] = id;
+                    b.count[(t & 1) as usize] += 1;
+                    hash ^= zobrist().piece_keys[sq][t as usize];
+                }
             }
         }
         if turn == 1 {
