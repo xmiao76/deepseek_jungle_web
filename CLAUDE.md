@@ -126,7 +126,9 @@ The P9a spike passed (804/804 perft parity, 33.7M nps in Chromium), so the full 
 
 **Remaining (not yet done)**: the full statistical G4 arena (24+ decisive games Rust vs C# AOT) — the depth gap (Rust depth 12 vs C# depth 8 at Hard) makes a decisive win near-certain, so it is documented as the depth proxy rather than run; and making the Rust engine the shipped default (currently `?engine=rust` is opt-in). The C# engine remains the oracle and the default backend.
 
-**Tablebase port (done)**: `tablebase.rs` ports the 2+3-piece WDL probe (index + file read + probe, self-contained SHA-256). `tb-verify` 2000/2000 and `search-parity --tb` 150/150 byte-exact vs C#; the worker gunzips `tablebases/jungle3.tb.gz` and loads it once, so the browser Rust engine now has exact endgames. CI reproducibility gate (`rust-toolchain.toml` + `rust-jungle/scripts/verify-wasm.ps1`) rebuilds the wasm from source and diffs SHA-256 against the committed artifact.
+**Tablebase port (done)**: `tablebase.rs` ports the 2+3-piece WDL probe (index + file read + probe, self-contained SHA-256). `tb-verify` 2000/2000 and `search-parity --tb` 150/150 byte-exact vs C#; the worker gunzips `tablebases/jungle3.tb.gz` and loads it once (three defects fixed to make this work: the fetch URL resolved relative to `/js/`, a bump `alloc` at offset 0 clobbered the static data/Rust heap, and the worker wrote into a stale `memory.buffer` captured before the memory growth). The browser Rust engine now has exact endgames (`tb-check` e2e asserts `tbLoaded`).
+
+**Per-move timing note**: the worker-internal search honors its budget (~400 ms for the 300 ms Easy preset; depth 10 from the start), but the game's per-move *wall* time (the page Stopwatch around the whole `FindBestMoveAsync`) is ~1.8 s — the extra ~1.4 s is Blazor `IJSRuntime` interop + worker postMessage round-trip overhead, not the search. The depth claims (depth 12 at Hard) are measured at the search level, not the wall level. With the tablebase active, endgames are exact, so full games draw via three-fold after many shuffling moves and run longer (the full-game e2e timeout is therefore 300 s).
 
 ### Coverage gate fix
 
