@@ -22,8 +22,12 @@ jobs:
           toolchain: 1.94.1
           targets: wasm32-unknown-unknown
 
-      - name: Verify committed rust-engine.wasm is reproducible
-        run: pwsh -File rust-jungle/scripts/verify-wasm.ps1
+      - name: Build Rust engine wasm (from source)
+        working-directory: rust-jungle
+        run: cargo build --release -p jungle-wasm --target wasm32-unknown-unknown
+
+      - name: Copy wasm into wwwroot (bundled by the AOT publish below)
+        run: cp rust-jungle/target/wasm32-unknown-unknown/release/jungle_wasm.wasm src/JungleGame.Web/wwwroot/js/rust-engine.wasm
 
       - name: Install wasm-tools workload (AOT publish)
         run: dotnet workload install wasm-tools

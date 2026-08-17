@@ -7,6 +7,7 @@ import { test, expect } from '@playwright/test';
 // The tablebase makes endgames exact, so games run longer (perfect play draws
 // via three-fold after many shuffling moves) — hence the generous timeout.
 test('Rust engine plays a full AI-vs-AI game to a terminal state', async ({ page }) => {
+    test.setTimeout(420_000); // exact endgames draw via shuffling, so this is slow
     await page.goto('/?mode=aiai&engine=rust&diff=easy&pace=0');
     await expect(page.locator('.board-grid')).toBeVisible({ timeout: 120_000 });
     await expect(page.locator('.piece')).toHaveCount(16);
