@@ -1,0 +1,5 @@
+# Pins the Rust toolchain so the committed rust-engine.wasm is reproducible.
+# CI rebuilds from source and diffs against the committed artifact.
+[toolchain]
+channel = "1.94.1"
+targets = ["wasm32-unknown-unknown"]

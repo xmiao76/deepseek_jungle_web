@@ -16,6 +16,15 @@ jobs:
         with:
           global-json-file: global.json
 
+      - name: Install Rust toolchain (pinned)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.94.1
+          targets: wasm32-unknown-unknown
+
+      - name: Verify committed rust-engine.wasm is reproducible
+        run: pwsh -File rust-jungle/scripts/verify-wasm.ps1
+
       - name: Install wasm-tools workload (AOT publish)
         run: dotnet workload install wasm-tools
 
