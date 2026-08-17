@@ -37,14 +37,16 @@
       });
     },
     // Terminate the worker (used on game reset to abandon a stale search).
+    // In-flight searches resolve with aborted:true — a benign abandon, not a
+    // worker failure — so the C# side does not fall back to the C# engine.
     reset() {
       if (worker) {
         worker.terminate();
         worker = null;
-        for (const [id, resolve] of pending) {
-          pending.delete(id);
-          resolve({ id, error: "reset" });
-        }
+      }
+      for (const [id, resolve] of pending) {
+        pending.delete(id);
+        resolve({ id, aborted: true });
       }
     },
   };

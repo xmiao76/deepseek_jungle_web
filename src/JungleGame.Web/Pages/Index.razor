@@ -266,15 +266,14 @@
         }
 
         _aiLoopRunning = true;
+        var service = _service;
+        // Pin the game epoch: applying a move replaces the immutable GameState, so the
+        // state object cannot serve as the pin — but a New Game (or a mode/first-move
+        // change) bumps GameEpoch, which is how a stale search result is detected and
+        // never applied to a fresh game.
+        var epoch = service.GameEpoch;
         try
         {
-            var service = _service;
-            // Pin the game epoch: applying a move replaces the immutable GameState, so the
-            // state object cannot serve as the pin — but a New Game (or a mode/first-move
-            // change) bumps GameEpoch, which is how a stale search result is detected and
-            // never applied to a fresh game.
-            var epoch = service.GameEpoch;
-
             while (service.GameEpoch == epoch && service.ShouldAiMove())
             {
                 await InvokeAsync(() =>
@@ -287,6 +286,11 @@
                 service.CancelAiSearch();
                 var cts = new CancellationTokenSource();
                 service.AiCts = cts;
+                // Capture the token up front: a concurrent StartNewGame disposes the
+                // CTS, and accessing cts.Token after disposal throws
+                // ObjectDisposedException. The captured token stays valid (and reads
+                // as cancelled), so the search can still abort promptly.
+                var token = cts.Token;
 
                 var searchState = service.State;
                 var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -294,21 +298,21 @@
                 bool usedRust = service.UseRust;
                 if (usedRust)
                 {
-                    best = await service.Rust!.FindBestMoveAsync(searchState, cts.Token);
+                    best = await service.Rust!.FindBestMoveAsync(searchState, token);
                     // If the worker failed mid-search, fall back to the C# engine
                     // for this move (and the rest of the session).
                     usedRust = service.Rust.IsAvailable;
                 }
                 if (!usedRust)
                 {
-                    await Task.Run(() => best = service.Ai.FindBestMove(searchState, cts.Token));
+                    await Task.Run(() => best = service.Ai.FindBestMove(searchState, token));
                 }
                 sw.Stop();
 
                 await InvokeAsync(() =>
                 {
                     service.IsBusy = false;
-                    if (service.GameEpoch != epoch || cts.IsCancellationRequested)
+                    if (service.GameEpoch != epoch || token.IsCancellationRequested)
                     {
                         return; // a new game started during the search; abandon this turn
                     }
@@ -346,6 +350,15 @@
                 _service.UpdateStatus();
                 StateHasChanged();
             });
+
+            // A new game (or mode/first-move change) started while this loop was
+            // mid-search: its RunAiTurnAsync call returned early because
+            // _aiLoopRunning was still true, so re-trigger it here — otherwise the
+            // new game would sit stuck on the AI's turn with no search running.
+            if (_service.GameEpoch != epoch && _service.ShouldAiMove())
+            {
+                _ = RunAiTurnAsync();
+            }
         }
     }
 

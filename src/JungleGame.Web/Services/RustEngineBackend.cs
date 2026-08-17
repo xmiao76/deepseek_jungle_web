@@ -42,16 +42,34 @@ public sealed class RustEngineBackend
     /// <summary>Terminates the worker, abandoning any in-flight search.</summary>
     public void Reset()
     {
-        // Fire-and-forget: reset is best-effort (a stale search is abandoned by
-        // the page's epoch guard regardless).
-        _ = _js.InvokeVoidAsync("rustEngine.reset").AsTask();
+        _ = ResetAsync();
+    }
+
+    /// <summary>
+    /// Fire-and-forget reset that observes its own faults: a reset failure (e.g.
+    /// the worker was already gone) must never surface as an unobserved task
+    /// exception, which Blazor WASM turns into the "unhandled error" banner.
+    /// </summary>
+    private async Task ResetAsync()
+    {
+        try
+        {
+            await _js.InvokeVoidAsync("rustEngine.reset");
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or InvalidOperationException or TaskCanceledException)
+        {
+            // Best-effort: the page's GameEpoch guard already abandons the stale
+            // result, so a failed reset is harmless.
+        }
     }
 
     /// <summary>
     /// Searches for the best move. The position + game history (for three-fold
     /// repetition) are serialized to hex and handed to the worker; the result is
     /// decoded into a public <see cref="Move"/>. Returns null (and marks this
-    /// backend unavailable) when the worker cannot produce a move.
+    /// backend unavailable on a genuine failure) when the worker cannot produce
+    /// a move. A benign abort (game reset) returns null WITHOUT disabling the
+    /// backend.
     /// </summary>
     public async Task<Move?> FindBestMoveAsync(GameState state, CancellationToken token)
     {
@@ -76,6 +94,13 @@ public sealed class RustEngineBackend
             IsAvailable = false;
             return null;
         }
+
+        // A reset resolves the in-flight search with aborted:true — that is a
+        // normal game-reset abandon, NOT a worker failure. Do not flip
+        // IsAvailable, or a single "new game" click would permanently drop the
+        // ~19x-faster Rust engine and fall back to C# for the whole session.
+        if (result.Aborted)
+            return null;
 
         if (result.Error != null || result.NoMove)
         {
@@ -133,6 +158,7 @@ public sealed class RustEngineBackend
         public int From { get; set; }
         public int To { get; set; }
         public bool NoMove { get; set; }
+        public bool Aborted { get; set; }
         public string? Error { get; set; }
     }
 }
