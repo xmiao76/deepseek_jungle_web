@@ -84,6 +84,12 @@ public sealed class GameService
     /// <summary>True when the Rust backend is enabled AND its worker is healthy.</summary>
     public bool UseRust => Rust != null && Rust.IsAvailable;
 
+    /// <summary>Human-readable name of the engine actually driving the AI.</summary>
+    public string EngineName => UseRust ? "Rust engine" : "C# engine";
+
+    /// <summary>Human-readable runtime string for the active engine.</summary>
+    public string RuntimeLabel => UseRust ? "WASM · Web Worker" : ".NET WASM · AOT";
+
     /// <summary>Switches the AI to the Rust Web-Worker backend (the shipped default).</summary>
     public void EnableRustEngine(IJSRuntime js)
     {

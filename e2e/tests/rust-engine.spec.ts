@@ -4,6 +4,17 @@ import { test, expect } from '@playwright/test';
 // search (rust-engine.wasm) plays a full game through the real UI, at far
 // greater depth than the C# AOT engine at the same budget.
 
+// The Rust engine is the DEFAULT backend (no ?engine= flag needed): the header
+// badge must report "Rust engine" and a real move must be produced.
+test('Rust engine is the default and the badge reports it', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('.board-grid')).toBeVisible({ timeout: 120_000 });
+
+    const badges = await page.locator('.header-badges .badge').allTextContents();
+    console.log(`[badges] ${JSON.stringify(badges.map(b => b.trim()))}`);
+    expect(badges.some(b => b.trim().startsWith('Rust engine'))).toBe(true);
+});
+
 // The tablebase makes endgames exact, so games run longer (perfect play draws
 // via three-fold after many shuffling moves) — hence the generous timeout.
 test('Rust engine plays a full AI-vs-AI game to a terminal state', async ({ page }) => {

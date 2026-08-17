@@ -10,8 +10,8 @@
     <header class="game-header">
         <h1>Jungle <span class="subtitle">斗兽棋 · Dou Shou Qi</span></h1>
         <div class="header-badges">
-            <span class="badge">@AppInfo.EngineName v@(AppInfo.Version)</span>
-            <span class="badge">@AppInfo.Runtime</span>
+            <span class="badge">@_service.EngineName v@(AppInfo.Version)</span>
+            <span class="badge">@_service.RuntimeLabel</span>
             <span class="badge @(_crossOriginIsolated ? "badge-ok" : "badge-warn")" title="Background-thread AI requires cross-origin isolation (COOP/COEP headers).">
                 threading: @(_crossOriginIsolated ? "active" : "unavailable")
             </span>
@@ -102,7 +102,7 @@
             </div>
 
             <footer class="credits">
-                <div>Jungle v@(AppInfo.Version) · @AppInfo.EngineName</div>
+                <div>Jungle v@(AppInfo.Version) · @_service.EngineName (@_service.RuntimeLabel)</div>
                 <div>Made with model <strong>@AppInfo.ModelCredit</strong> · code agent <strong>@AppInfo.AgentCredit</strong></div>
             </footer>
         </aside>
