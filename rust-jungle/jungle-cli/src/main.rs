@@ -115,6 +115,13 @@ fn main() {
                     args.contains(&"--legacy-p5".to_string()),
                     args.contains(&"--legacy-p6".to_string()),
                 );
+                // --tb <path>: enable tablebase probing for search-with-TB parity.
+                if let Some(tb_flag) = args.iter().position(|a| a == "--tb") {
+                    let tb_path = &args[tb_flag + 1];
+                    let tb_bytes = std::fs::read(tb_path).expect("read tablebase");
+                    let tb = jungle_lib::tablebase::Tablebase::load(&tb_bytes).expect("load tablebase");
+                    search.set_tablebase(tb);
+                }
                 let best = search.search_best_move(&mut board, depth, &history, None);
 
                 let actual_move = match best {
@@ -180,6 +187,35 @@ fn main() {
                 }
             }
             println!("eval-verify: {checked} checked, {mismatches} mismatches");
+            std::process::exit(if mismatches == 0 { 0 } else { 1 });
+        }
+        "tb-verify" => {
+            let path = args.get(2).expect("dump file required");
+            let tb_path = args.get(3).expect("tablebase .tb file required");
+            let text = std::fs::read_to_string(path).expect("read dump");
+            let tb_bytes = std::fs::read(tb_path).expect("read tablebase");
+            let tb = jungle_lib::tablebase::Tablebase::load(&tb_bytes)
+                .expect("tablebase failed to load (hash check)");
+            let mut checked = 0usize;
+            let mut mismatches = 0usize;
+            for line in text.lines() {
+                if line.trim().is_empty() { continue; }
+                let hex = field(line, "hex=");
+                let stm: u8 = field(line, "stm=").parse().unwrap();
+                let wdl_expected: i32 = field(line, "wdl=").parse().unwrap();
+                let grid = hex_grid(hex);
+                let board = Board::from_grid(&grid, stm);
+                let (found, score) = tb.try_probe(&board, 0);
+                let wdl = if !found { 0 } else if score > 0 { 3 } else if score < 0 { 1 } else { 2 };
+                checked += 1;
+                if wdl != wdl_expected {
+                    mismatches += 1;
+                    if mismatches <= 10 {
+                        eprintln!("TB MISMATCH line {}: wdl {} vs {} score {}", line.split_whitespace().next().unwrap(), wdl, wdl_expected, score);
+                    }
+                }
+            }
+            println!("tb-verify: {checked} checked, {mismatches} mismatches");
             std::process::exit(if mismatches == 0 { 0 } else { 1 });
         }
         "zobrist-verify" => {

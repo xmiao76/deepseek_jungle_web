@@ -368,6 +368,7 @@ internal static class BenchPositions
         bool legacySearch = args.Contains("--legacy-search");
         bool legacyP5 = args.Contains("--legacy-p5");
         bool legacyP6 = args.Contains("--legacy-p6");
+        bool useTb = args.Contains("--use-tb");
 
         var positions = new List<GameState>();
         foreach (var entry in TestSuiteParser.ParseFile(
@@ -396,7 +397,7 @@ internal static class BenchPositions
             for (int depth = 1; depth <= maxD; depth++)
             {
                 var engine = new MinimaxEngine(TimeSpan.FromSeconds(60), depth,
-                    legacyEval: legacyEval, legacySearch: legacySearch, legacyP5: legacyP5, legacyP6: legacyP6, useTablebase: false);
+                    legacyEval: legacyEval, legacySearch: legacySearch, legacyP5: legacyP5, legacyP6: legacyP6, useTablebase: useTb);
                 var move = engine.FindBestMove(positions[i]);
                 string moveText = move == null ? "null" : $"{move.Value.From.Row * 7 + move.Value.From.Col}>{move.Value.To.Row * 7 + move.Value.To.Col}";
                 writer.WriteLine($"P{i} hex={HexLayout(positions[i])} hist={HistoryHex(positions[i])} stm={(int)positions[i].CurrentTurn} D{depth} {engine.NodesSearched} {moveText}");
@@ -408,6 +409,86 @@ internal static class BenchPositions
 
     private static string HistoryHex(GameState state) =>
         string.Join(",", state.History.Select(h => h.ToString("x16", System.Globalization.CultureInfo.InvariantCulture)));
+
+    /// <summary>
+    /// Tablebase probe oracle for the Rust port: dumps (hex, stm, wdl) for
+    /// seeded random <= 3-piece positions, so the Rust probe can be verified
+    /// byte-for-byte against the C# TablebaseProbe.
+    /// </summary>
+    internal static int RunTablebaseDump(string[] args)
+    {
+        string outPath = Args.ReadString(args, "--tb-dump")
+            ?? throw new InvalidOperationException("--tb-dump <file> is required.");
+        int samples = Args.ReadInt(args, "--samples", 2000);
+        int seed = Args.ReadInt(args, "--seed", 42);
+        string tbPath = Args.ReadString(args, "--tb-path") ?? "";
+
+        if (tbPath.Length > 0)
+            TablebaseProbe.LoadForTestingFromPath(tbPath);
+        else
+            TablebaseProbe.Initialize();
+
+        if (!TablebaseProbe.IsLoaded)
+        {
+            Console.Error.WriteLine("No tablebase loaded — set --tb-path or JUNGLE_TB_PATH.");
+            return 1;
+        }
+
+        var rng = new Random(seed);
+        var animals = new[] { Animal.Rat, Animal.Cat, Animal.Dog, Animal.Wolf, Animal.Leopard, Animal.Tiger, Animal.Lion, Animal.Elephant };
+        using var writer = new StreamWriter(outPath);
+        for (int i = 0; i < samples; i++)
+        {
+            int pieceCount = rng.Next(2) == 0 ? 2 : 3;
+            int stm = rng.Next(2);
+            var pieces = new List<Piece>();
+            if (pieceCount == 2)
+            {
+                var s1 = RandomUsable(rng);
+                var s2 = RandomUsable(rng);
+                while (s2 == s1) s2 = RandomUsable(rng);
+                pieces.Add(new Piece(animals[rng.Next(8)], stm == 0 ? Player.Blue : Player.Red, s1));
+                pieces.Add(new Piece(animals[rng.Next(8)], stm == 0 ? Player.Red : Player.Blue, s2));
+            }
+            else
+            {
+                bool twoBlue = rng.Next(2) == 0;
+                var s1 = RandomUsable(rng);
+                var s2 = RandomUsable(rng);
+                var s3 = RandomUsable(rng);
+                while (s2 == s1) s2 = RandomUsable(rng);
+                while (s3 == s1 || s3 == s2) s3 = RandomUsable(rng);
+                if (twoBlue)
+                {
+                    pieces.Add(new Piece(animals[rng.Next(8)], Player.Blue, s1));
+                    pieces.Add(new Piece(animals[rng.Next(8)], Player.Blue, s2));
+                    pieces.Add(new Piece(animals[rng.Next(8)], Player.Red, s3));
+                }
+                else
+                {
+                    pieces.Add(new Piece(animals[rng.Next(8)], Player.Blue, s1));
+                    pieces.Add(new Piece(animals[rng.Next(8)], Player.Red, s2));
+                    pieces.Add(new Piece(animals[rng.Next(8)], Player.Red, s3));
+                }
+            }
+
+            var state = GameState.CreateFromPieces(pieces, stm == 0 ? Player.Blue : Player.Red);
+            var board = SearchBoard.FromGameState(state);
+            bool found = TablebaseProbe.TryProbe(board, 0, out int score);
+            int wdl = found ? (score > 0 ? 3 : score < 0 ? 1 : 2) : 0;
+            writer.WriteLine($"hex={HexLayout(state)} stm={stm} wdl={wdl} score={score}");
+        }
+        Console.WriteLine($"Tablebase dump → {outPath}.");
+        return 0;
+
+        static Position RandomUsable(Random r)
+        {
+            Position p;
+            do { p = new Position(r.Next(7), r.Next(9)); }
+            while (Board.Initial.IsDen(p, Player.Blue) || Board.Initial.IsDen(p, Player.Red));
+            return p;
+        }
+    }
 
     private static void DumpSearch(StreamWriter? writer, string label, GameState state, int depth)
     {

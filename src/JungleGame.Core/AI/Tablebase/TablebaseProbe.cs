@@ -89,6 +89,26 @@ internal static class TablebaseProbe
         }
     }
 
+    /// <summary>Loads the table from an explicit path (Bench oracle).</summary>
+    internal static void LoadForTestingFromPath(string path)
+    {
+        lock (Gate)
+        {
+            var loaded = TablebaseFile.Load(path);
+            if (loaded == null)
+            {
+                _status = Status.Corrupt;
+                return;
+            }
+            _wdl2 = loaded.Wdl2;
+            _wdl3 = loaded.Wdl3;
+            _dtm2 = loaded.Dtm2;
+            _dtm3 = loaded.Dtm3;
+            _status = Status.Loaded;
+            _initialized = true;
+        }
+    }
+
     /// <summary>Idempotent: scans the search paths once and loads the file if found.</summary>
     internal static void Initialize()
     {

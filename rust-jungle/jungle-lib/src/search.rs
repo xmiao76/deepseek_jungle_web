@@ -9,6 +9,7 @@ use crate::movegen::{
 };
 use crate::moveorder::MoveOrdering;
 use crate::rep::RepetitionTable;
+use crate::tablebase::Tablebase;
 use crate::tt::{Bound, TranspositionTable, MATE_RANGE, MATE_SCORE};
 
 const MATE_THRESHOLD: i32 = MATE_SCORE - MATE_RANGE;
@@ -33,11 +34,18 @@ pub struct Search {
     legacy_search: bool,
     legacy_p5: bool,
     legacy_p6: bool,
+    tb: Option<Tablebase>,
 }
 
 impl Search {
     pub fn new(legacy_eval: bool, legacy_search: bool, legacy_p5: bool, legacy_p6: bool) -> Self {
         Self::with_clock(legacy_eval, legacy_search, legacy_p5, legacy_p6, native_now_ms)
+    }
+
+    /// Enables tablebase probing (the caller passes the loaded table). When the
+    /// table is absent, the search degrades to pure search (like the C# engine).
+    pub fn set_tablebase(&mut self, tb: Tablebase) {
+        self.tb = Some(tb);
     }
 
     /// Constructor with a caller-supplied clock (the wasm backend passes a JS
@@ -61,6 +69,7 @@ impl Search {
             legacy_search,
             legacy_p5,
             legacy_p6,
+            tb: None,
         }
     }
 
@@ -166,6 +175,21 @@ impl Search {
 
         if self.rep.is_repetition(board.hash) {
             return 0; // contempt = 0 -> draw is neutral
+        }
+
+        // Tablebase probe (before the TT): exact WDL for <= 3-piece positions.
+        if let Some(tb) = &self.tb {
+            let count = board.count[0] as usize + board.count[1] as usize;
+            if count >= 2 && count <= 3 {
+                let (found, score) = tb.try_probe(board, ply as i32);
+                if found {
+                    if score != 0 {
+                        self.tt.store(board.hash, 127, adjust_mate_for_store(score, ply as i32), None, Bound::Exact);
+                        return score;
+                    }
+                    return 0; // tablebase draw -> neutral (contempt = 0)
+                }
+            }
         }
 
         let (cut, tt_score, tt_move) = self.tt.try_probe(board.hash, depth, alpha, beta, ply as i32);
@@ -324,6 +348,18 @@ impl Search {
 
         if board.winner != NO_WINNER {
             return terminal_score(board.winner, board.turn, ply);
+        }
+
+        // Tablebase probe at the qsearch top (a <= 3-piece position is fully
+        // resolved; the exact score beats searching captures).
+        if let Some(tb) = &self.tb {
+            let count = board.count[0] as usize + board.count[1] as usize;
+            if count >= 2 && count <= 3 {
+                let (found, score) = tb.try_probe(board, ply as i32);
+                if found {
+                    return score; // includes 0 for a draw
+                }
+            }
         }
 
         let side = board.turn;

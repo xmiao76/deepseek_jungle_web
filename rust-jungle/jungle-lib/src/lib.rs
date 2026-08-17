@@ -8,6 +8,7 @@ pub mod netrand;
 pub mod rep;
 pub mod search;
 pub mod see;
+pub mod tablebase;
 pub mod tt;
 pub mod zobrist;
 

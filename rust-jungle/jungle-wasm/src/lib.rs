@@ -3,6 +3,7 @@
 //! to manage wasm memory directly. The clock is imported from JS (bare
 //! wasm32-unknown-unknown has no clock).
 
+use jungle_lib::tablebase::Tablebase;
 use jungle_lib::{Board, Search};
 
 // JS-provided wall clock (ms since an arbitrary epoch; performance.now()).
@@ -12,8 +13,22 @@ extern "C" {
 }
 
 const MAX_HISTORY: usize = 256;
+const MAX_TB_BYTES: usize = 32_000_000; // WDL-only jungle3.tb is ~31 MB decompressed
 static mut HEX_BUF: [u8; 126] = [0; 126];
 static mut HISTORY_BUF: [u64; MAX_HISTORY] = [0; MAX_HISTORY];
+static mut TB: Option<Tablebase> = None;
+static mut BUMP: usize = 0;
+
+/// Simple bump allocator for scratch input buffers (the tablebase bytes, which
+/// are larger than the fixed scratch buffers). Alignment is 8 bytes; memory is
+/// never freed (a single tablebase load per worker lifetime).
+#[no_mangle]
+pub extern "C" fn alloc(len: usize) -> usize {
+    let base = unsafe { BUMP };
+    let aligned = (base + 7) & !7;
+    unsafe { BUMP = aligned + len };
+    aligned
+}
 
 /// Scratch buffer for the 126-char position hex (63 squares x 2 hex chars).
 #[no_mangle]
@@ -25,6 +40,24 @@ pub extern "C" fn hex_buf() -> *mut u8 {
 #[no_mangle]
 pub extern "C" fn history_buf() -> *mut u64 {
     std::ptr::addr_of_mut!(HISTORY_BUF).cast()
+}
+
+/// Loads the tablebase from a byte slice the JS side has already written into
+/// wasm memory. Returns 1 on success, 0 on a hash/corruption failure. The bytes
+/// must be the decompressed jungle3.tb (the JS side gunzips the asset).
+#[no_mangle]
+pub extern "C" fn load_tablebase(ptr: *const u8, len: usize) -> u32 {
+    if len == 0 || len > MAX_TB_BYTES {
+        return 0;
+    }
+    let bytes = unsafe { std::slice::from_raw_parts(ptr, len) };
+    match Tablebase::load(bytes) {
+        Some(tb) => {
+            unsafe { TB = Some(tb) };
+            1
+        }
+        None => 0,
+    }
 }
 
 /// Runs a time-bounded iterative-deepening search over the position in
@@ -47,6 +80,10 @@ pub extern "C" fn search_timed(turn: u32, history_len: usize, budget_ms: f64, ma
     let history: &[u64] = unsafe { &HISTORY_BUF[..history_len.min(MAX_HISTORY)] };
 
     let mut search = Search::with_clock(false, false, false, false, wasm_now_ms);
+    let tb = unsafe { (&raw const TB).as_ref().unwrap() };
+    if let Some(tb) = tb {
+        search.set_tablebase(tb.clone());
+    }
     let best = search.search_best_move(&mut board, max_depth as i32, history, Some(budget_ms));
 
     let (bf, bt) = best.unwrap_or((0, 0));

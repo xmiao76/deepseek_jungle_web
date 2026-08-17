@@ -4,6 +4,7 @@
 //         u64s, may be ""), budgetMs, maxDepth }
 //   out: { id, nodes, depth, from, to, noMove } or { id, error }
 let instance = null;
+let tbLoaded = false;
 
 async function load() {
   if (instance) return instance;
@@ -16,6 +17,28 @@ async function load() {
   );
   instance = result.instance;
   return instance;
+}
+
+// Loads the 2+3-piece tablebase (gzip asset, decompressed in JS) once.
+async function loadTablebase(inst) {
+  if (tbLoaded) return;
+  try {
+    const resp = await fetch(new URL("tablebases/jungle3.tb.gz", self.location.href));
+    if (!resp.ok) return;
+    const gz = await resp.arrayBuffer();
+    const decompressed = new DecompressionStream("gzip");
+    const stream = new Response(new Blob([gz]).stream().pipeThrough(decompressed)).arrayBuffer();
+    const bytes = new Uint8Array(await stream);
+
+    // Allocate space in wasm memory and copy the bytes in.
+    const mem = inst.exports.memory;
+    const ptr = inst.exports.alloc(bytes.length);
+    new Uint8Array(mem.buffer, ptr, bytes.length).set(bytes);
+    const ok = inst.exports.load_tablebase(ptr, bytes.length);
+    tbLoaded = ok === 1;
+  } catch {
+    tbLoaded = false; // degrade to pure search
+  }
 }
 
 function parseHistory(hex) {
@@ -32,14 +55,13 @@ onmessage = async (e) => {
   const { id, hex, turn, history, budgetMs, maxDepth } = e.data;
   try {
     const inst = await load();
+    await loadTablebase(inst);
     const mem = new Uint8Array(inst.exports.memory.buffer);
 
-    // Position hex into the scratch buffer.
     const hexBytes = new TextEncoder().encode(hex);
     const hexPtr = inst.exports.hex_buf();
     mem.set(hexBytes, hexPtr);
 
-    // History hashes into the scratch buffer (little-endian u64s).
     const historyArr = parseHistory(history);
     let historyLen = 0;
     if (historyArr.length > 0) {
