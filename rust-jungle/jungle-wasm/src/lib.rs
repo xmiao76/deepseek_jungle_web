@@ -5,6 +5,7 @@
 
 use jungle_lib::tablebase::Tablebase;
 use jungle_lib::{Board, Search};
+use std::alloc::{alloc as std_alloc, Layout};
 
 // JS-provided wall clock (ms since an arbitrary epoch; performance.now()).
 #[link(wasm_import_module = "env")]
@@ -17,17 +18,21 @@ const MAX_TB_BYTES: usize = 32_000_000; // WDL-only jungle3.tb is ~31 MB decompr
 static mut HEX_BUF: [u8; 126] = [0; 126];
 static mut HISTORY_BUF: [u64; MAX_HISTORY] = [0; MAX_HISTORY];
 static mut TB: Option<Tablebase> = None;
-static mut BUMP: usize = 0;
 
-/// Simple bump allocator for scratch input buffers (the tablebase bytes, which
-/// are larger than the fixed scratch buffers). Alignment is 8 bytes; memory is
-/// never freed (a single tablebase load per worker lifetime).
+/// Allocates a buffer from the Rust global allocator (the same allocator the
+/// search's Vec/Box use), so the JS side can copy the tablebase bytes into wasm
+/// memory without clobbering static data or the heap. Returns 0 on failure.
+/// Memory is intentionally never freed (a single tablebase load per worker).
 #[no_mangle]
 pub extern "C" fn alloc(len: usize) -> usize {
-    let base = unsafe { BUMP };
-    let aligned = (base + 7) & !7;
-    unsafe { BUMP = aligned + len };
-    aligned
+    if len == 0 {
+        return 0;
+    }
+    let layout = match Layout::from_size_align(len, 8) {
+        Ok(l) => l,
+        Err(_) => return 0,
+    };
+    unsafe { std_alloc(layout) as usize }
 }
 
 /// Scratch buffer for the 126-char position hex (63 squares x 2 hex chars).
@@ -57,6 +62,17 @@ pub extern "C" fn load_tablebase(ptr: *const u8, len: usize) -> u32 {
             1
         }
         None => 0,
+    }
+}
+
+/// Returns 1 when the tablebase is loaded and active (the search uses it).
+#[no_mangle]
+pub extern "C" fn tb_loaded() -> u32 {
+    let tb = unsafe { (&raw const TB).as_ref().unwrap() };
+    if tb.is_some() {
+        1
+    } else {
+        0
     }
 }
 

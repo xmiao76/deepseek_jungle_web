@@ -4,8 +4,10 @@ import { test, expect } from '@playwright/test';
 // search (rust-engine.wasm) plays a full game through the real UI, at far
 // greater depth than the C# AOT engine at the same budget.
 
-test('Rust engine plays a full AI-vs-AI game at depth >= C# baseline', async ({ page }) => {
-    await page.goto('/?mode=aiai&engine=rust&diff=easy&pace=30');
+// The tablebase makes endgames exact, so games run longer (perfect play draws
+// via three-fold after many shuffling moves) — hence the generous timeout.
+test('Rust engine plays a full AI-vs-AI game to a terminal state', async ({ page }) => {
+    await page.goto('/?mode=aiai&engine=rust&diff=easy&pace=0');
     await expect(page.locator('.board-grid')).toBeVisible({ timeout: 120_000 });
     await expect(page.locator('.piece')).toHaveCount(16);
 
@@ -16,7 +18,7 @@ test('Rust engine plays a full AI-vs-AI game at depth >= C# baseline', async ({ 
 
     // Wait for the full game to finish (den entry, elimination, stalemate, or draw).
     const overlay = page.locator('.result-overlay');
-    await expect(overlay).toBeVisible({ timeout: 180_000 });
+    await expect(overlay).toBeVisible({ timeout: 300_000 });
 
     const result = await overlay.getAttribute('data-result');
     expect(['blue-wins', 'red-wins', 'draw']).toContain(result);

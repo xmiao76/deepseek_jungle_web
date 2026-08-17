@@ -23,18 +23,23 @@ async function load() {
 async function loadTablebase(inst) {
   if (tbLoaded) return;
   try {
-    const resp = await fetch(new URL("tablebases/jungle3.tb.gz", self.location.href));
+    // The tablebase lives at the site root (/tablebases/), one level up from
+    // this worker (/js/rust-engine-worker.js).
+    const resp = await fetch(new URL("../tablebases/jungle3.tb.gz", self.location.href));
     if (!resp.ok) return;
-    const gz = await resp.arrayBuffer();
-    const decompressed = new DecompressionStream("gzip");
-    const stream = new Response(new Blob([gz]).stream().pipeThrough(decompressed)).arrayBuffer();
-    const bytes = new Uint8Array(await stream);
+    const gz = new Uint8Array(await resp.arrayBuffer());
+    const ds = new DecompressionStream("gzip");
+    const decompressed = new Uint8Array(
+      await new Response(new Blob([gz]).stream().pipeThrough(ds)).arrayBuffer(),
+    );
 
-    // Allocate space in wasm memory and copy the bytes in.
-    const mem = inst.exports.memory;
-    const ptr = inst.exports.alloc(bytes.length);
-    new Uint8Array(mem.buffer, ptr, bytes.length).set(bytes);
-    const ok = inst.exports.load_tablebase(ptr, bytes.length);
+    // Allocate space in wasm memory and copy the bytes in. `alloc` grows the
+    // linear memory, which detaches any prior `memory.buffer` reference — so
+    // re-read the buffer AFTER the alloc.
+    const ptr = inst.exports.alloc(decompressed.length);
+    if (ptr === 0) { tbLoaded = false; return; }
+    new Uint8Array(inst.exports.memory.buffer, ptr, decompressed.length).set(decompressed);
+    const ok = inst.exports.load_tablebase(ptr, decompressed.length);
     tbLoaded = ok === 1;
   } catch {
     tbLoaded = false; // degrade to pure search
@@ -71,7 +76,9 @@ onmessage = async (e) => {
       historyLen = historyArr.length;
     }
 
+    const searchStart = performance.now();
     const encoded = inst.exports.search_timed(turn, historyLen, budgetMs, maxDepth);
+    const searchMs = performance.now() - searchStart;
     const b = BigInt.asUintN(64, encoded);
     postMessage({
       id,
@@ -80,6 +87,8 @@ onmessage = async (e) => {
       from: Number((b >> 16n) & 0xffn),
       to: Number((b >> 8n) & 0xffn),
       noMove: Number(b & 1n) === 1,
+      tbLoaded: inst.exports.tb_loaded() === 1,
+      searchMs: Math.round(searchMs),
     });
   } catch (err) {
     postMessage({ id, error: String(err) });
