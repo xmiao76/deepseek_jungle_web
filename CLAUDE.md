@@ -118,7 +118,10 @@ The P9a spike passed (804/804 perft parity, 33.7M nps in Chromium), so the full 
 
 **Speed gates (measured 2026-08-16)**:
 - **G2 native nps — PASS**: `jungle-cli search-bench 12` = 568,857 nodes at **~1.01M nps**; C# `--bench --depth 12` = 568,857 nodes at ~748k nps — identical node counts (re-confirming parity) and the Rust search is **~36% faster** natively.
-- **G3 wasm nps — PASS decisively**: `jungle_wasm.search_nodes` fixed-depth search in Chromium ≈ **583k nps**, vs the recorded C# AOT-wasm baseline of ~30k nps (README.md: Hard 2000 ms → depth 8, ~61k nodes, ~30k nps) — a **~19× browser speedup**, which at equal time translates directly to several extra plies and much stronger play. `jungle-wasm` also exports `search_packed(hex, turn, depth)` for the real browser backend.
+- **G3 wasm nps — PASS decisively**: `jungle_wasm.search_nodes` fixed-depth search in Chromium ≈ **583k nps**, vs the recorded C# AOT-wasm baseline of ~30k nps (README.md: Hard 2000 ms → depth 8, ~61k nodes, ~30k nps) — a **~19× browser speedup**, which at equal time translates directly to several extra plies and much stronger play.
+- **G5 full game — PASS**: `?mode=aiai&engine=rust` plays a complete AI-vs-AI game to a terminal state through the real UI (e2e/tests/rust-engine.spec.ts). The browser backend is a Web Worker (`rust-engine-worker.js` + `rust-engine.js`) hosting `rust-engine.wasm` (committed, 64 KB); `RustEngineBackend` serializes position+history to hex and decodes the move; the C# `MinimaxEngine` remains the default and the oracle.
+
+**Remaining (not yet done)**: the G4 equal-time browser arena (Rust vs C# AOT, a full statistical gate) — the ~19× speedup makes a decisive win nearly certain, but it has not been run; the tablebase port to Rust; and wiring `cargo build` into CI so the committed wasm stays reproducible. The C# engine is still the shipped default (`?engine=rust` is opt-in).
 
 ### Coverage gate fix
 
