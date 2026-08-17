@@ -110,13 +110,23 @@ public class CaptureResolverTests
     }
 
     [Fact]
-    public void RatOnLand_CanCapture_RatInWater()
+    public void RatOnLand_CannotCapture_RatInWater()
     {
         var rat1 = new Piece(Animal.Rat, Player.Blue, new Position(1, 2)); // On land
         var rat2 = new Piece(Animal.Rat, Player.Red, new Position(1, 3));  // In water
         Assert.False(Board.IsWater(rat1.Position));
         Assert.True(Board.IsWater(rat2.Position));
-        Assert.True(CaptureResolver.CanCapture(rat1, rat2, Board));
+        Assert.False(CaptureResolver.CanCapture(rat1, rat2, Board));
+    }
+
+    [Fact]
+    public void RatInWater_CannotCapture_RatOnLand()
+    {
+        var rat1 = new Piece(Animal.Rat, Player.Blue, new Position(1, 3)); // In water
+        var rat2 = new Piece(Animal.Rat, Player.Red, new Position(1, 2));  // On land
+        Assert.True(Board.IsWater(rat1.Position));
+        Assert.False(Board.IsWater(rat2.Position));
+        Assert.False(CaptureResolver.CanCapture(rat1, rat2, Board));
     }
 
     [Fact]

@@ -157,17 +157,18 @@ public class TablebaseTests : IDisposable
     // ---- Known 2-piece values ----
 
     [Fact]
-    public void RatVsRat_NoDraws()
+    public void RatVsRat_AdjacentSameTerrain_Captures()
     {
-        // Literature result: two equal pieces never draw (den races and the
-        // unconditional rat capture decide every position).
-        var rng = new Random(7);
-        for (int i = 0; i < 100; i++)
-        {
-            var (board, _) = Random2PieceBoard(rng, Animal.Rat, Animal.Rat);
-            Assert.True(TablebaseProbe.TryProbe(board, 0, out int score));
-            Assert.NotEqual(0, score);
-        }
+        // Adjacent rats on the same terrain capture each other (rank 1 vs 1):
+        // the side to move wins by elimination. This replaces the old
+        // "rat vs rat never draws" property, which was invalid — a lone rat can
+        // defend its den and force a three-fold draw, and cross-boundary rats
+        // (land vs water) cannot capture each other at all.
+        var board = MakeBoard(
+            new Piece(Animal.Rat, Player.Blue, new Position(3, 2)),
+            new Piece(Animal.Rat, Player.Red, new Position(3, 3)));
+        Assert.True(TablebaseProbe.TryProbe(board, 0, out int score));
+        Assert.True(score > 0); // Blue wins by capture
     }
 
     [Fact]

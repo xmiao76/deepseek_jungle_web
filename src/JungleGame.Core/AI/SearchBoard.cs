@@ -296,9 +296,10 @@ internal sealed class SearchBoard
         if (aRank == 8 && dRank == 1)
             return false;
 
-        // Rat vs Rat is unconditional (land or water, even from a trap square)
+        // Rat vs Rat: a rat may capture a rat only on the same terrain (a rat
+        // cannot capture across the land-water boundary).
         if (aRank == 1 && dRank == 1)
-            return true;
+            return IsWater(attackerSq) == IsWater(defenderSq);
 
         // Rat in water cannot be captured by any other piece on land
         if (dRank == 1 && IsWater(defenderSq) && !IsWater(attackerSq))

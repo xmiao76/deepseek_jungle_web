@@ -35,7 +35,9 @@ pub fn can_capture(attacker: u8, attacker_sq: u8, defender: u8, defender_sq: u8)
         return false;
     }
     if a_rank == 1 && d_rank == 1 {
-        return true;
+        // Rat vs Rat: only on the same terrain (a rat cannot capture across
+        // the land-water boundary).
+        return is_water(attacker_sq) == is_water(defender_sq);
     }
     if d_rank == 1 && is_water(defender_sq) && !is_water(attacker_sq) {
         return false;
