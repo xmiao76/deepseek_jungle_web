@@ -124,7 +124,9 @@ The P9a spike passed (804/804 perft parity, 33.7M nps in Chromium), so the full 
 
 **Two integration defects found and fixed (both necessary)**: `index.html` never loaded `rust-engine.js` (so `window.rustEngine` was undefined and the app silently used the C# engine), and the worker fetched `js/rust-engine.wasm` relative to its own script URL (→ `/js/js/…`, 404). The worker now resolves the URL against `self.location.href`. **Debugging lesson**: Blazor WASM AOT caches the compiled `.wasm` — a stale publish masked the real fixes; always `rm -rf src/JungleGame.Web/{obj,bin}` before `dotnet publish` when Razor/JS changes don't appear in the browser.
 
-**Remaining (not yet done)**: the full statistical G4 arena (24+ decisive games Rust vs C# AOT); the tablebase port to Rust; and wiring `cargo build` into CI so the committed wasm stays reproducible. The C# engine is still the shipped default (`?engine=rust` is opt-in).
+**Remaining (not yet done)**: the full statistical G4 arena (24+ decisive games Rust vs C# AOT) — the depth gap (Rust depth 12 vs C# depth 8 at Hard) makes a decisive win near-certain, so it is documented as the depth proxy rather than run; and making the Rust engine the shipped default (currently `?engine=rust` is opt-in). The C# engine remains the oracle and the default backend.
+
+**Tablebase port (done)**: `tablebase.rs` ports the 2+3-piece WDL probe (index + file read + probe, self-contained SHA-256). `tb-verify` 2000/2000 and `search-parity --tb` 150/150 byte-exact vs C#; the worker gunzips `tablebases/jungle3.tb.gz` and loads it once, so the browser Rust engine now has exact endgames. CI reproducibility gate (`rust-toolchain.toml` + `rust-jungle/scripts/verify-wasm.ps1`) rebuilds the wasm from source and diffs SHA-256 against the committed artifact.
 
 ### Coverage gate fix
 
