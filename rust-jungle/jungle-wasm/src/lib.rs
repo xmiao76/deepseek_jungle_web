@@ -18,6 +18,7 @@ const MAX_TB_BYTES: usize = 32_000_000; // WDL-only jungle3.tb is ~31 MB decompr
 static mut HEX_BUF: [u8; 126] = [0; 126];
 static mut HISTORY_BUF: [u64; MAX_HISTORY] = [0; MAX_HISTORY];
 static mut TB: Option<Tablebase> = None;
+static mut SEARCH: Option<Search> = None;
 
 /// Allocates a buffer from the Rust global allocator (the same allocator the
 /// search's Vec/Box use), so the JS side can copy the tablebase bytes into wasm
@@ -95,19 +96,24 @@ pub extern "C" fn search_timed(turn: u32, history_len: usize, budget_ms: f64, ma
 
     let history: &[u64] = unsafe { &HISTORY_BUF[..history_len.min(MAX_HISTORY)] };
 
-    let mut search = Search::with_clock(false, false, false, false, wasm_now_ms);
+    // Persist the search (and its transposition table) across moves, matching
+    // the C# engine's session-long instance — TT carryover is a real strength
+    // gain. The repetition path and node counters are reset per search.
+    let mut search = unsafe { (&raw mut SEARCH).as_mut().unwrap().take() }
+        .unwrap_or_else(|| Search::with_clock(false, false, false, false, wasm_now_ms));
     let tb = unsafe { (&raw const TB).as_ref().unwrap() };
     if let Some(tb) = tb {
         search.set_tablebase(tb.clone());
     }
     let best = search.search_best_move(&mut board, max_depth as i32, history, Some(budget_ms));
-
     let (bf, bt) = best.unwrap_or((0, 0));
-    ((search.nodes as u64) << 32)
+    let result = ((search.nodes as u64) << 32)
         | ((search.last_completed_depth as u64) << 24)
         | ((bf as u64) << 16)
         | ((bt as u64) << 8)
-        | (if best.is_none() { 1 } else { 0 })
+        | (if best.is_none() { 1 } else { 0 });
+    unsafe { (&raw mut SEARCH).as_mut().unwrap().replace(search) };
+    result
 }
 
 /// perft smoke (movegen parity check in the browser).
