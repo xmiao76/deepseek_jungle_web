@@ -78,16 +78,20 @@ public sealed class GameService
 
     public MinimaxEngine Ai => _ai;
 
-    /// <summary>The Rust backend when <c>?engine=rust</c> is active; null otherwise.</summary>
+    /// <summary>The Rust backend when enabled; null when the C# engine is forced.</summary>
     public RustEngineBackend? Rust { get; private set; }
 
-    public bool UseRust => Rust != null;
+    /// <summary>True when the Rust backend is enabled AND its worker is healthy.</summary>
+    public bool UseRust => Rust != null && Rust.IsAvailable;
 
-    /// <summary>Switches the AI to the Rust Web-Worker backend (additive to the C# engine).</summary>
+    /// <summary>Switches the AI to the Rust Web-Worker backend (the shipped default).</summary>
     public void EnableRustEngine(IJSRuntime js)
     {
-        Rust = new RustEngineBackend(js, TimeSpan.FromMilliseconds((int)_difficulty));
+        Rust ??= new RustEngineBackend(js, TimeSpan.FromMilliseconds((int)_difficulty));
     }
+
+    /// <summary>Forces the C# engine (?engine=csharp), e.g. for A/B or fallback testing.</summary>
+    public void DisableRustEngine() => Rust = null;
 
     /// <summary>Set by the page before each AI search; cancelled when a game resets.</summary>
     public CancellationTokenSource? AiCts { get; set; }

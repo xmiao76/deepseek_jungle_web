@@ -6,9 +6,9 @@ namespace JungleGame.Web.Services;
 
 /// <summary>
 /// The Rust engine backend: runs the search in a Web Worker (rust-engine.wasm)
-/// via JS interop, so the CPU-bound search never blocks the UI thread. The C#
-/// <see cref="MinimaxEngine"/> remains the default backend and the oracle; this
-/// backend is selected with <c>?engine=rust</c>.
+/// via JS interop, so the CPU-bound search never blocks the UI thread. It is the
+/// shipped default; the C# <see cref="MinimaxEngine"/> remains the oracle and
+/// the fallback when the worker is unavailable (<c>?engine=csharp</c> forces it).
 ///
 /// The search is time-bounded (iterative deepening to a wall-clock budget from
 /// <c>performance.now()</c>, imported into the worker). Only fully completed
@@ -30,6 +30,13 @@ public sealed class RustEngineBackend
     public int LastCompletedDepth => _lastDepth;
     public long NodesSearched => _lastNodes;
 
+    /// <summary>
+    /// True while the worker has never failed. A failed search (worker error,
+    /// missing wasm, JS exception) flips this to false and the page falls back
+    /// to the C# engine for the rest of the session.
+    /// </summary>
+    public bool IsAvailable { get; private set; } = true;
+
     public void SetTimeLimit(TimeSpan timeLimit) => _budgetMs = (int)timeLimit.TotalMilliseconds;
 
     /// <summary>Terminates the worker, abandoning any in-flight search.</summary>
@@ -43,11 +50,12 @@ public sealed class RustEngineBackend
     /// <summary>
     /// Searches for the best move. The position + game history (for three-fold
     /// repetition) are serialized to hex and handed to the worker; the result is
-    /// decoded into a public <see cref="Move"/>.
+    /// decoded into a public <see cref="Move"/>. Returns null (and marks this
+    /// backend unavailable) when the worker cannot produce a move.
     /// </summary>
     public async Task<Move?> FindBestMoveAsync(GameState state, CancellationToken token)
     {
-        if (state.Status != GameStatus.InProgress)
+        if (!IsAvailable || state.Status != GameStatus.InProgress)
             return null;
 
         string hex = SerializePieces(state);
@@ -55,13 +63,29 @@ public sealed class RustEngineBackend
         int turn = (int)state.CurrentTurn;
         const int maxDepth = 32;
 
-        var result = await _js.InvokeAsync<RustSearchResult>(
-            "rustEngine.search", hex, turn, historyHex, _budgetMs, maxDepth);
+        RustSearchResult result;
+        try
+        {
+            result = await _js.InvokeAsync<RustSearchResult>(
+                "rustEngine.search", hex, turn, historyHex, _budgetMs, maxDepth);
+        }
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or InvalidOperationException or TaskCanceledException)
+        {
+            // Worker failed to load/run (missing wasm, unsupported browser, etc.).
+            // Fall back to the C# engine for the rest of the session.
+            IsAvailable = false;
+            return null;
+        }
+
+        if (result.Error != null || result.NoMove)
+        {
+            if (result.Error != null)
+                IsAvailable = false;
+            return null;
+        }
 
         _lastDepth = result.Depth;
         _lastNodes = result.Nodes;
-        if (result.NoMove)
-            return null;
 
         var from = new Position(result.From % 7, result.From / 7);
         var to = new Position(result.To % 7, result.To / 7);
@@ -109,5 +133,6 @@ public sealed class RustEngineBackend
         public int From { get; set; }
         public int To { get; set; }
         public bool NoMove { get; set; }
+        public string? Error { get; set; }
     }
 }

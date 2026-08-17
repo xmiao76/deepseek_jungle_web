@@ -56,19 +56,21 @@ deployed as a pure static site on **Cloudflare Pages** — no server, zero hosti
 
 ### Browser performance (measured, Chromium, AOT)
 
-The engine is time-bounded per move (iterative deepening), so the three desktop difficulty
-presets adapt to the browser automatically:
+The search is time-bounded per move (iterative deepening), so the three desktop difficulty
+presets adapt to the browser automatically. The shipped default is the **Rust engine**
+(`rust-jungle/`), a byte-exact port of the C# engine compiled to WebAssembly and run in a
+Web Worker — it is ~19× faster than the C# AOT engine in the browser (the C# engine remains
+the oracle and the fallback, selectable with `?engine=csharp`):
 
 | Budget | Depth | Nodes | NPS |
 |---|---|---|---|
-| Easy, 300 ms | 4–5 | ~6–8k | ~18–24k |
-| Medium, 1000 ms | 7 | ~29k | ~29k |
-| Hard, 2000 ms | 8 | ~61k | ~30k |
+| Easy, 300 ms | 9 | ~160k | ~530k |
+| Medium, 1000 ms | ~12 | ~570k | ~570k |
+| Hard, 2000 ms | 13 | ~1.5M | ~530k |
 
-Desktop native baseline for comparison (desktop `CLAUDE.md`): depth 11 at ~870k nps in 2 s.
-The browser AI is weaker than the desktop AI at the same time budget — that is the expected
-cost of running the same search in WebAssembly, and the reason the presets are
-budget-based rather than depth-based.
+The old C# AOT browser engine (still the fallback) reached depth 8 at Hard (~30k nps); the
+Rust engine's ~19× speedup is a ~5-ply advantage at equal time, directly translating to
+stronger play. Desktop native baseline for comparison: depth 11 at ~870k nps in 2 s.
 
 ## Rules
 

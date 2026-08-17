@@ -126,6 +126,10 @@
     {
         _service.MoveExecuted += OnMoveExecuted;
         _service.GameEnded += OnGameEnded;
+        // The Rust Web-Worker engine is the shipped default (it is byte-exact
+        // with the C# engine but ~18x faster in the browser). ApplyQueryPresets
+        // can force the C# engine with ?engine=csharp.
+        _service.EnableRustEngine(JS);
         ApplyQueryPresets();
     }
 
@@ -287,11 +291,15 @@
                 var searchState = service.State;
                 var sw = System.Diagnostics.Stopwatch.StartNew();
                 Move? best = null;
-                if (service.UseRust)
+                bool usedRust = service.UseRust;
+                if (usedRust)
                 {
                     best = await service.Rust!.FindBestMoveAsync(searchState, cts.Token);
+                    // If the worker failed mid-search, fall back to the C# engine
+                    // for this move (and the rest of the session).
+                    usedRust = service.Rust.IsAvailable;
                 }
-                else
+                if (!usedRust)
                 {
                     await Task.Run(() => best = service.Ai.FindBestMove(searchState, cts.Token));
                 }
@@ -305,7 +313,7 @@
                         return; // a new game started during the search; abandon this turn
                     }
 
-                    if (service.UseRust)
+                    if (usedRust)
                     {
                         service.UpdateSearchInfo(service.Rust!.LastCompletedDepth, service.Rust.NodesSearched, sw.ElapsedMilliseconds);
                     }
@@ -380,6 +388,9 @@
                     break;
                 case "engine" when kv[1].Equals("rust", StringComparison.OrdinalIgnoreCase):
                     _service.EnableRustEngine(JS);
+                    break;
+                case "engine" when kv[1].Equals("csharp", StringComparison.OrdinalIgnoreCase):
+                    _service.DisableRustEngine();
                     break;
             }
         }
