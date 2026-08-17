@@ -2,6 +2,7 @@ using JungleGame.Core.AI;
 using JungleGame.Core.Engine;
 using JungleGame.Core.Model;
 using JungleGame.Web.Models;
+using Microsoft.JSInterop;
 
 namespace JungleGame.Web.Services;
 
@@ -77,6 +78,17 @@ public sealed class GameService
 
     public MinimaxEngine Ai => _ai;
 
+    /// <summary>The Rust backend when <c>?engine=rust</c> is active; null otherwise.</summary>
+    public RustEngineBackend? Rust { get; private set; }
+
+    public bool UseRust => Rust != null;
+
+    /// <summary>Switches the AI to the Rust Web-Worker backend (additive to the C# engine).</summary>
+    public void EnableRustEngine(IJSRuntime js)
+    {
+        Rust = new RustEngineBackend(js, TimeSpan.FromMilliseconds((int)_difficulty));
+    }
+
     /// <summary>Set by the page before each AI search; cancelled when a game resets.</summary>
     public CancellationTokenSource? AiCts { get; set; }
 
@@ -121,7 +133,7 @@ public sealed class GameService
     public Difficulty Difficulty
     {
         get => _difficulty;
-        set { if (_difficulty != value) { _difficulty = value; _ai.SetTimeLimit(TimeSpan.FromMilliseconds((int)value)); UpdateStatus(); } }
+        set { if (_difficulty != value) { _difficulty = value; _ai.SetTimeLimit(TimeSpan.FromMilliseconds((int)value)); Rust?.SetTimeLimit(TimeSpan.FromMilliseconds((int)value)); UpdateStatus(); } }
     }
 
     public FirstMoveChoice FirstMove
@@ -225,6 +237,7 @@ public sealed class GameService
         AiCts?.Cancel();
         AiCts?.Dispose();
         AiCts = null;
+        Rust?.Reset();
     }
 
     // --- Interaction ---------------------------------------------------------------------

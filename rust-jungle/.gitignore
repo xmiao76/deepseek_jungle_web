@@ -1,2 +1,2 @@
 /target
-rust-jungle/bench-page/*.wasm
+bench-page/*.wasm

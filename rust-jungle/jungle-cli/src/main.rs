@@ -115,7 +115,7 @@ fn main() {
                     args.contains(&"--legacy-p5".to_string()),
                     args.contains(&"--legacy-p6".to_string()),
                 );
-                let best = search.search_best_move(&mut board, depth, &history);
+                let best = search.search_best_move(&mut board, depth, &history, None);
 
                 let actual_move = match best {
                     Some((f, t)) => format!("{}>{}", f, t),
@@ -221,7 +221,7 @@ fn main() {
             let mut board = Board::initial();
             let mut search = Search::new(false, false, false, false);
             let start = std::time::Instant::now();
-            let best = search.search_best_move(&mut board, depth, &[]);
+            let best = search.search_best_move(&mut board, depth, &[], None);
             let elapsed = start.elapsed().as_secs_f64().max(0.000001);
             let nps = search.nodes as f64 / elapsed;
             println!("search-bench depth={} nodes={} nps={:.0} best={:?}", depth, search.nodes, nps, best);

@@ -287,7 +287,14 @@
                 var searchState = service.State;
                 var sw = System.Diagnostics.Stopwatch.StartNew();
                 Move? best = null;
-                await Task.Run(() => best = service.Ai.FindBestMove(searchState, cts.Token));
+                if (service.UseRust)
+                {
+                    best = await service.Rust!.FindBestMoveAsync(searchState, cts.Token);
+                }
+                else
+                {
+                    await Task.Run(() => best = service.Ai.FindBestMove(searchState, cts.Token));
+                }
                 sw.Stop();
 
                 await InvokeAsync(() =>
@@ -298,7 +305,14 @@
                         return; // a new game started during the search; abandon this turn
                     }
 
-                    service.UpdateSearchInfo(service.Ai.LastCompletedDepth, service.Ai.NodesSearched, sw.ElapsedMilliseconds);
+                    if (service.UseRust)
+                    {
+                        service.UpdateSearchInfo(service.Rust!.LastCompletedDepth, service.Rust.NodesSearched, sw.ElapsedMilliseconds);
+                    }
+                    else
+                    {
+                        service.UpdateSearchInfo(service.Ai.LastCompletedDepth, service.Ai.NodesSearched, sw.ElapsedMilliseconds);
+                    }
                     service.ApplyAiMove(best);
                 });
 
@@ -363,6 +377,9 @@
                     break;
                 case "pace" when int.TryParse(kv[1], out var paceMs):
                     _service.AiVsAiPaceMs = Math.Clamp(paceMs, 0, MaxPresetPaceMs);
+                    break;
+                case "engine" when kv[1].Equals("rust", StringComparison.OrdinalIgnoreCase):
+                    _service.EnableRustEngine(JS);
                     break;
             }
         }

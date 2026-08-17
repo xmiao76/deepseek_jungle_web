@@ -25,6 +25,10 @@ pub struct Search {
     rep: RepetitionTable,
     prev_move: [i32; MAX_PLY],
     pub nodes: u64,
+    pub last_completed_depth: i32,
+    /// Clock in milliseconds since an arbitrary epoch (native: process start;
+    /// wasm: performance.now() via an imported function).
+    now_ms: fn() -> f64,
     legacy_eval: bool,
     legacy_search: bool,
     legacy_p5: bool,
@@ -33,12 +37,26 @@ pub struct Search {
 
 impl Search {
     pub fn new(legacy_eval: bool, legacy_search: bool, legacy_p5: bool, legacy_p6: bool) -> Self {
+        Self::with_clock(legacy_eval, legacy_search, legacy_p5, legacy_p6, native_now_ms)
+    }
+
+    /// Constructor with a caller-supplied clock (the wasm backend passes a JS
+    /// `performance.now()` import; native uses `Instant`).
+    pub fn with_clock(
+        legacy_eval: bool,
+        legacy_search: bool,
+        legacy_p5: bool,
+        legacy_p6: bool,
+        now_ms: fn() -> f64,
+    ) -> Self {
         Search {
             tt: TranspositionTable::new(1 << 20),
             order: MoveOrdering::new(legacy_p5, legacy_p6),
             rep: RepetitionTable::new(),
             prev_move: [-1; MAX_PLY],
             nodes: 0,
+            last_completed_depth: 0,
+            now_ms,
             legacy_eval,
             legacy_search,
             legacy_p5,
@@ -46,11 +64,15 @@ impl Search {
         }
     }
 
-    /// Runs a fixed-depth search from `board`; returns (nodes, best move).
-    pub fn search_best_move(&mut self, board: &mut Board, max_depth: i32, history: &[u64]) -> Option<(u8, u8)> {
+    /// Runs an iterative-deepening search. `max_depth` caps the depth; an
+    /// optional `time_budget_ms` (None = unlimited) stops the loop at the next
+    /// depth boundary once the budget is spent — only fully completed depths
+    /// are accepted, matching the C# engine. Returns the best move.
+    pub fn search_best_move(&mut self, board: &mut Board, max_depth: i32, history: &[u64], time_budget_ms: Option<f64>) -> Option<(u8, u8)> {
         self.tt.new_generation();
         self.rep.reset();
         self.nodes = 0;
+        self.last_completed_depth = 0;
         self.rep.seed_path(history);
 
         let side = board.turn;
@@ -60,14 +82,23 @@ impl Search {
             return None;
         }
         if move_count == 1 {
+            self.last_completed_depth = 1;
             return Some((root_moves[0].from, root_moves[0].to));
         }
 
+        let start = (self.now_ms)();
         let mut best_move = (root_moves[0].from, root_moves[0].to);
         let mut best_move_for_ordering = Some(best_move);
         let mut best_score = i32::MIN;
 
         for depth in 1..=max_depth {
+            // Time check at the depth boundary (before starting this iteration).
+            if let Some(budget) = time_budget_ms {
+                if (self.now_ms)() - start >= budget {
+                    break;
+                }
+            }
+
             let mut current_best_move = best_move;
             let mut search_alpha = if best_score == i32::MIN { i32::MIN + 1 } else { best_score - ASPIRATION_DELTA };
             let mut search_beta = if best_score == i32::MIN { i32::MAX } else { best_score + ASPIRATION_DELTA };
@@ -117,6 +148,7 @@ impl Search {
             best_move = current_best_move;
             best_move_for_ordering = Some(current_best_move);
             self.order.age_history();
+            self.last_completed_depth = depth;
             if best_score >= MATE_THRESHOLD {
                 break;
             }
@@ -371,6 +403,12 @@ fn terminal_score(winner: u8, side_to_move: u8, ply: usize) -> i32 {
     } else {
         ply as i32 - MATE_SCORE
     }
+}
+
+/// Native clock: milliseconds since an arbitrary process-local epoch.
+fn native_now_ms() -> f64 {
+    static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    START.get_or_init(std::time::Instant::now).elapsed().as_secs_f64() * 1000.0
 }
 
 fn adjust_mate_for_store(score: i32, ply: i32) -> i32 {
