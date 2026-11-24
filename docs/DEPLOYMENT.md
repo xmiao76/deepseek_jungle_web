@@ -40,6 +40,15 @@ The live **Download Arena .wasm** action produced a file with the committed SHA-
 Screenshots: [`docs/screenshots/live-game.png`](screenshots/live-game.png),
 [`docs/screenshots/live-conformance.png`](screenshots/live-conformance.png).
 
+## Source publication
+
+The refactor is committed locally on branch `Arena-WebAssembly` (the branch tracks
+`origin/Arena-WebAssembly`; the previous release is tagged `web-v1.1.0`). Pushing with the
+credentials available in this environment was rejected by GitHub (`403`, authenticated as
+`xmiao08` rather than the repository owner `xmiao76`), so the commits above are local and must be
+pushed by a repository owner. The deployed site and the committed release artifacts are
+independent of that restriction.
+
 ## Post-deploy checklist
 
 - [x] Public URL starts the new shell and loads its engine.
