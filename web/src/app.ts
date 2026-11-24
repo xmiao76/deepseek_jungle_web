@@ -199,7 +199,7 @@ export class JungleApp {
           <a class="wordmark" href="#" aria-label="Jungle home"><span class="wordmark-mark">J</span><span>JUNGLE</span></a>
           <nav class="topnav">
             <button class="link-button" data-action="how-to">How to play</button>
-            ${window.__JUNGLE_EMBEDDED__ ? '' : '<a class="link-button" href="./conformance/">Conformance host</a>'}
+            ${window.__JUNGLE_EMBEDDED__ ? '' : '<a class="link-button nav-secondary" href="./conformance/">Conformance host</a>'}
             <a class="link-button" href="${esc(IDENTITY.githubUrl)}" target="_blank" rel="noreferrer">GitHub</a>
           </nav>
         </header>

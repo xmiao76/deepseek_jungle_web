@@ -48,7 +48,7 @@ The title, filename, component metadata, standalone menu and this README are gen
 <!-- release:start -->
 | Artifact | SHA-256 | Bytes |
 |---|---|---|
-| `release/index.html` | `036700fdbe7ea597ad2fa4be86fa71305bd5b61e56b933602c5626ceb8b8feb0` | 10,423,914 |
+| `release/index.html` | `f030097f7250fc4423562c62ca9ed3bf0201eae9e19534f898fdcce2ccafffec` | 10,424,047 |
 | `release/deepseek-v4-pro-claude-code-2.0.0.wasm` | `357bb306160aa714b6b5ee48cbd57ba5c141efb5f277bd60386f91fdb5b22a1c` | 2,871,712 |
 
 The rules profile is `desktop-jungle-v2` with digest `a457bbc009e975a9eafe5ff1f8fa40ca2548f2a689b121c8c4ed99dd0f3fdc57`.

@@ -357,6 +357,9 @@ h3 {
   align-items: center;
   gap: 22px;
 }
+.topnav .link-button {
+  white-space: nowrap;
+}
 .menu-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.12fr) minmax(340px, 0.88fr);
@@ -998,10 +1001,14 @@ h3 {
     padding-top: 16px;
   }
   .topbar {
+    align-items: flex-start;
     margin-bottom: 24px;
   }
   .topnav {
     gap: 14px;
+  }
+  .nav-secondary {
+    display: none;
   }
   .hero h1 {
     font-size: 72px;

@@ -1,2 +1,2 @@
-036700fdbe7ea597ad2fa4be86fa71305bd5b61e56b933602c5626ceb8b8feb0  release/index.html
+f030097f7250fc4423562c62ca9ed3bf0201eae9e19534f898fdcce2ccafffec  release/index.html
 357bb306160aa714b6b5ee48cbd57ba5c141efb5f277bd60386f91fdb5b22a1c  release/deepseek-v4-pro-claude-code-2.0.0.wasm
