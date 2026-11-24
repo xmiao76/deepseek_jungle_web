@@ -1,2 +1,14 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# The canonical rules profile is digested byte-for-byte; never convert line endings.
+rules/desktop-jungle-v2.json -text
+# The committed single-file game is hashed byte-for-byte; keep its bytes exactly.
+release/index.html -text
+
+# Fonts and wasm are binary.
+*.ttf binary
+*.woff2 binary
+*.wasm binary
+*.png binary
+*.gz binary

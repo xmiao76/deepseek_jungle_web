@@ -1,0 +1,12 @@
+{
+  "release": {
+    "label": "Release",
+    "dir": "./generated/release",
+    "name": "release"
+  },
+  "fixture": {
+    "label": "Fixture",
+    "dir": "./generated/fixture",
+    "name": "fixture"
+  }
+}

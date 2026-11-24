@@ -1,0 +1,28 @@
+{
+  "colors": {
+    "ink": "#0e1513",
+    "lacquer": "#14211d",
+    "lacquerLight": "#1e332c",
+    "lacquerEdge": "#2b4a3f",
+    "parchment": "#efe1c3",
+    "parchmentAlt": "#e6d4b2",
+    "parchmentDark": "#cdb78e",
+    "jade": "#2e7d68",
+    "jadeLight": "#7cc7b5",
+    "riverDeep": "#145958",
+    "riverMid": "#2a7d78",
+    "riverLight": "#62b7ab",
+    "vermilion": "#b8452f",
+    "vermilionLight": "#e98b72",
+    "indigo": "#3c5a8a",
+    "indigoLight": "#84a5d8",
+    "gold": "#d8a84a",
+    "goldLight": "#f2d489",
+    "cream": "#f7eedb",
+    "charcoal": "#1a2622"
+  },
+  "fonts": {
+    "display": "Marcellus",
+    "ui": "Lato"
+  }
+}

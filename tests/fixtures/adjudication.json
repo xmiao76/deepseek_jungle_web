@@ -1,0 +1,97 @@
+{
+  "description": "jungle_prompt.md adjudication rows. Apply moves in order from the position with quietBefore; assert the final adjudication.",
+  "rows": [
+    {
+      "name": "den-wins-at-100",
+      "position": {"2": "red:cat", "0": "blue:rat"},
+      "moves": [[2, 3]],
+      "quietBefore": 99,
+      "quietAfter": 100,
+      "status": "won",
+      "winner": "red",
+      "reason": "den"
+    },
+    {
+      "name": "elimination-resets-quiet",
+      "position": {"42": "red:rat", "43": "blue:elephant"},
+      "moves": [[42, 43]],
+      "quietBefore": 99,
+      "quietAfter": 0,
+      "status": "won",
+      "winner": "red",
+      "reason": "elimination"
+    },
+    {
+      "name": "immobilization-wins-at-100",
+      "position": {"2": "red:dog", "7": "red:cat", "0": "blue:rat"},
+      "moves": [[2, 1]],
+      "quietBefore": 99,
+      "quietAfter": 100,
+      "status": "won",
+      "winner": "red",
+      "reason": "immobilization"
+    },
+    {
+      "name": "quiet-under-limit",
+      "position": {"42": "red:cat", "6": "blue:dog"},
+      "moves": [[42, 43]],
+      "quietBefore": 98,
+      "quietAfter": 99,
+      "status": "playing",
+      "winner": null,
+      "reason": ""
+    },
+    {
+      "name": "no-capture-draw-at-100",
+      "position": {"42": "red:cat", "6": "blue:dog"},
+      "moves": [[42, 43]],
+      "quietBefore": 99,
+      "quietAfter": 100,
+      "status": "drawn",
+      "winner": null,
+      "reason": "no-capture"
+    },
+    {
+      "name": "capture-keeps-playing",
+      "position": {"42": "red:wolf", "43": "blue:cat", "6": "blue:dog"},
+      "moves": [[42, 43]],
+      "quietBefore": 99,
+      "quietAfter": 0,
+      "status": "playing",
+      "winner": null,
+      "reason": ""
+    },
+    {
+      "name": "seven-plies-no-repetition",
+      "position": {"42": "red:cat", "6": "blue:dog"},
+      "moves": [[42, 43], [6, 5], [43, 42], [5, 6], [42, 43], [6, 5], [43, 42]],
+      "quietBefore": 0,
+      "quietAfter": 7,
+      "status": "playing",
+      "winner": null,
+      "reason": ""
+    },
+    {
+      "name": "third-occurrence-draw",
+      "position": {"42": "red:cat", "6": "blue:dog"},
+      "moves": [[42, 43], [6, 5], [43, 42], [5, 6], [42, 43], [6, 5], [43, 42], [5, 6]],
+      "quietBefore": 0,
+      "quietAfter": 8,
+      "status": "drawn",
+      "winner": null,
+      "reason": "repetition",
+      "rev": 8,
+      "toPlay": "red"
+    },
+    {
+      "name": "repetition-before-no-capture",
+      "position": {"42": "red:cat", "6": "blue:dog"},
+      "moves": [[42, 43], [6, 5], [43, 42], [5, 6], [42, 43], [6, 5], [43, 42], [5, 6]],
+      "quietBefore": 92,
+      "quietAfter": 100,
+      "status": "drawn",
+      "winner": null,
+      "reason": "repetition"
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+[package]
+name = "jungle-render"
+version = "2.0.0"
+edition = "2021"
+
+[dependencies]
+tiny-skia = { version = "=0.12.0", default-features = false, features = ["std"] }
+ab_glyph = { version = "=0.2.32", default-features = false, features = ["std"] }

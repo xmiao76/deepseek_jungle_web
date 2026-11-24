@@ -1,0 +1,10 @@
+[package]
+name = "jungle-core"
+version = "2.0.0"
+edition = "2021"
+
+[lib]
+name = "jungle_core"
+
+[dev-dependencies]
+serde_json = "1"

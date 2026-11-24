@@ -1,16 +1,22 @@
-/.claude
-/src/*/bin
-/src/*/obj
-/tests/*/bin
-/tests/*/obj
-/tests/*/TestResults
-/e2e/node_modules
-/e2e/test-results
-/e2e/playwright-report
-dist/
-*.dll
-*.exe
+# Rust
+/engine/target/
+/bench/v1/jungle-baseline/target/
+/build/
+/spike/
+/strength-arena.txt
+
+# Node
+/node_modules/
+/dist/
 /test-results/
+/playwright-report/
+/npm-debug.log*
+
+# Cloudflare
 /.wrangler/
-tuning-data*.bin
-weights*.json
+
+# Local tooling
+/.claude/
+.DS_Store
+*.exe
+*.dll

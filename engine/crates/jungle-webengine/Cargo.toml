@@ -1,0 +1,11 @@
+[package]
+name = "jungle-webengine"
+version = "2.0.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+jungle-core = { path = "../jungle-core" }
+jungle-render = { path = "../jungle-render" }

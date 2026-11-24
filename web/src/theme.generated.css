@@ -1,0 +1,25 @@
+/* GENERATED from design/theme.json by scripts/gen-theme.mjs. */
+:root {
+    --ink: #0e1513;
+    --lacquer: #14211d;
+    --lacquer-light: #1e332c;
+    --lacquer-edge: #2b4a3f;
+    --parchment: #efe1c3;
+    --parchment-alt: #e6d4b2;
+    --parchment-dark: #cdb78e;
+    --jade: #2e7d68;
+    --jade-light: #7cc7b5;
+    --river-deep: #145958;
+    --river-mid: #2a7d78;
+    --river-light: #62b7ab;
+    --vermilion: #b8452f;
+    --vermilion-light: #e98b72;
+    --indigo: #3c5a8a;
+    --indigo-light: #84a5d8;
+    --gold: #d8a84a;
+    --gold-light: #f2d489;
+    --cream: #f7eedb;
+    --charcoal: #1a2622;
+    --font-display: "Marcellus", "Iowan Old Style", "Palatino Linotype", serif;
+    --font-ui: "Lato", "Segoe UI", system-ui, sans-serif;
+}

@@ -1,0 +1,23 @@
+{
+  "description": "Opening handshake assertions from jungle_prompt.md.",
+  "red": {
+    "firstSide": "red",
+    "legalCount": 24,
+    "firstMove": [42, 35],
+    "lastMove": [62, 61],
+    "afterFirst": {
+      "rev": 1,
+      "emptySquare": 42,
+      "square": 35,
+      "piece": "red:elephant",
+      "quiet": 1,
+      "history": [[42, 35]],
+      "toPlay": "blue"
+    }
+  },
+  "blue": {
+    "firstSide": "blue",
+    "legalCount": 24,
+    "firstMove": [0, 1]
+  }
+}

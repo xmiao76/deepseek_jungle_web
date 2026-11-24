@@ -1,8 +1,0 @@
-[workspace]
-resolver = "2"
-members = ["jungle-lib", "jungle-cli", "jungle-wasm"]
-
-[profile.release]
-opt-level = 3
-lto = true
-codegen-units = 1

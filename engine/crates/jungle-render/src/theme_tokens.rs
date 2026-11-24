@@ -1,0 +1,23 @@
+//! GENERATED from design/theme.json by scripts/gen-theme.mjs.
+//! Do not edit by hand.
+
+pub const INK: u32 = 0x0e1513;
+pub const LACQUER: u32 = 0x14211d;
+pub const LACQUER_LIGHT: u32 = 0x1e332c;
+pub const LACQUER_EDGE: u32 = 0x2b4a3f;
+pub const PARCHMENT: u32 = 0xefe1c3;
+pub const PARCHMENT_ALT: u32 = 0xe6d4b2;
+pub const PARCHMENT_DARK: u32 = 0xcdb78e;
+pub const JADE: u32 = 0x2e7d68;
+pub const JADE_LIGHT: u32 = 0x7cc7b5;
+pub const RIVER_DEEP: u32 = 0x145958;
+pub const RIVER_MID: u32 = 0x2a7d78;
+pub const RIVER_LIGHT: u32 = 0x62b7ab;
+pub const VERMILION: u32 = 0xb8452f;
+pub const VERMILION_LIGHT: u32 = 0xe98b72;
+pub const INDIGO: u32 = 0x3c5a8a;
+pub const INDIGO_LIGHT: u32 = 0x84a5d8;
+pub const GOLD: u32 = 0xd8a84a;
+pub const GOLD_LIGHT: u32 = 0xf2d489;
+pub const CREAM: u32 = 0xf7eedb;
+pub const CHARCOAL: u32 = 0x1a2622;

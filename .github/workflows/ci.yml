@@ -7,118 +7,112 @@ on:
     branches: [main]
 
 jobs:
-  build-and-test:
+  build-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-dotnet@v4
-        with:
-          global-json-file: global.json
-
-      - name: Install Rust toolchain (pinned)
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust 1.94.1 + wasm target
+        uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.94.1
           targets: wasm32-unknown-unknown
 
-      - name: Build Rust engine wasm (from source)
-        working-directory: rust-jungle
-        run: cargo build --release -p jungle-wasm --target wasm32-unknown-unknown
-
-      - name: Copy wasm into wwwroot (bundled by the AOT publish below)
-        run: cp rust-jungle/target/wasm32-unknown-unknown/release/jungle_wasm.wasm src/JungleGame.Web/wwwroot/js/rust-engine.wasm
-
-      - name: Install wasm-tools workload (AOT publish)
-        run: dotnet workload install wasm-tools
-
-      - name: Build (Release)
-        run: dotnet build JungleGame.sln -c Release
-
-      - name: Run engine, AI and web test suites
-        run: dotnet test JungleGame.sln -c Release --no-build --logger "console;verbosity=normal"
-
-      - name: Coverage gate (Core line coverage >= 80%)
-        run: |
-          dotnet test tests/JungleGame.Tests -c Release --no-build --collect:"XPlat Code Coverage"
-          pwsh -File scripts/check-coverage.ps1
-
-      - name: Engine crash smoke (self-play)
-        run: dotnet run --project src/JungleGame.Bench -c Release --no-build -- --selfplay --games 2 --timeA 1000 --timeB 300
-
-      - name: Node-count regression gate (<= 15% growth at equal depth)
-        run: dotnet run --project src/JungleGame.Bench -c Release --no-build -- --bench --positions bench-positions.tsuite
-
-      - name: Tactical suite (11/11)
-        run: dotnet run --project src/JungleGame.Bench -c Release --no-build -- --testsuite
-
-      - name: Arena crash smoke (gated match, 2 games)
-        run: dotnet run --project src/JungleGame.Bench -c Release --no-build -- --arena --games 2 --timeA 1000 --timeB 300 --smoke
-
-      - name: Publish Blazor app (AOT)
-        # No --no-build here: the WASM/AOT publish invokes Build for the referenced
-        # Core project (NETSDK1085 otherwise).
-        run: dotnet publish src/JungleGame.Web/JungleGame.Web.csproj -c Release
-
-      - name: Upload static site artifact
-        uses: actions/upload-artifact@v4
+      - name: Install wasm-tools 1.263.0
+        uses: taiki-e/install-action@v2
         with:
-          name: pages-artifact
-          path: src/JungleGame.Web/bin/Release/net8.0/publish/wwwroot
+          tool: wasm-tools@1.263.0
 
-  e2e:
-    runs-on: ubuntu-latest
-    needs: build-and-test
-    steps:
-      - uses: actions/checkout@v4
+      - name: Install Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
 
-      - name: Download static site artifact
-        uses: actions/download-artifact@v4
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Rust format
+        working-directory: engine
+        run: cargo fmt --all -- --check
+
+      - name: Rust lint (-D warnings)
+        working-directory: engine
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Rust tests
+        working-directory: engine
+        run: cargo test --workspace
+
+      - name: Generated identity/theme drift gate
+        run: |
+          node scripts/sync-identity.mjs --check
+          node scripts/gen-theme.mjs --check
+
+      - name: Canonical rules digest gate
+        run: node scripts/check-rules-digest.mjs
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Build release (wasm, site, single file, conformance host, hashes)
+        run: npm run build
+
+      - name: Admission checklist against the release file
+        run: node scripts/admission.mjs
+
+      - name: Rules/referee/wasm parity tests
+        run: npm test
+
+      - name: Arena conformance (admission + 3 complete matches)
+        run: node scripts/conformance.mjs
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium firefox webkit
+
+      - name: Browser end-to-end tests
+        run: npx playwright test
+
+      - name: Upload Pages artifact
+        uses: actions/upload-artifact@v4
         with:
           name: pages-artifact
           path: dist
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install Playwright
-        working-directory: e2e
-        run: |
-          npm ci
-          npx playwright install chromium --with-deps
-
-      - name: Run Playwright E2E (includes AI-vs-AI WASM smoke)
-        working-directory: e2e
-        env:
-          WWWROOT: ${{ github.workspace }}/dist
-        run: npx playwright test
-
-      - name: Upload Playwright report on failure
-        if: failure()
+      - name: Upload release evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
-          path: e2e/playwright-report
+          name: release-evidence
+          path: |
+            release/
+            docs/CONFORMANCE.md
+            docs/ADMISSION.md
+            docs/STRENGTH.md
+            docs/screenshots/
+            test-results/
 
   deploy:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
-    needs: [build-and-test, e2e]
+    needs: build-test
     steps:
       - uses: actions/checkout@v4
-
-      - name: Download static site artifact
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           name: pages-artifact
           path: dist
-
-      # Deploys only when the repository secret CLOUDFLARE_API_TOKEN is configured;
-      # otherwise the build+test pipeline still runs and deploy is skipped.
-      - name: Deploy to Cloudflare Pages (project deepseek-jungle)
+      - name: Deploy to Cloudflare Pages
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         if: env.CLOUDFLARE_API_TOKEN != ''
         run: npx wrangler@4 pages deploy dist --project-name deepseek-jungle
+      - name: Verify live headers and assets
+        if: env.CLOUDFLARE_API_TOKEN != ''
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          curl -fsSI https://deepseek-jungle.pages.dev/ | head -20
+          curl -fsSI https://deepseek-jungle.pages.dev/assets/deepseek-v4-pro-claude-code-2.0.0.wasm | head -20

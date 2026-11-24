@@ -1,0 +1,7 @@
+[package]
+name = "jungle-baseline"
+version = "1.1.0"
+edition = "2021"
+
+[lib]
+name = "jungle_baseline"

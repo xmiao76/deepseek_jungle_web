@@ -1,7 +1,0 @@
-[package]
-name = "jungle-lib"
-version = "0.1.0"
-edition = "2021"
-
-[lib]
-name = "jungle_lib"

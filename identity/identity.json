@@ -1,0 +1,12 @@
+{
+  "model": "DeepSeek V4 Pro",
+  "codeAgent": "Claude Code",
+  "modelPlatform": "official",
+  "githubUrl": "https://github.com/xmiao76/deepseek_jungle_web",
+  "gameVersion": "2.0.0",
+  "engineVersion": "2.0.0",
+  "runtime": "Rust 1.94.1 · wasm32-unknown-unknown",
+  "rulesId": "desktop-jungle-v2",
+  "rulesDigest": "a457bbc009e975a9eafe5ff1f8fa40ca2548f2a689b121c8c4ed99dd0f3fdc57",
+  "rustToolchain": "1.94.1"
+}
