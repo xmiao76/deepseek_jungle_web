@@ -1072,10 +1072,16 @@ export class JungleApp {
       <div class="modal-body">
         <p class="download-name mono">${esc(IDENTITY.releaseFilename)}</p>
         <dl class="meta-list">
+          <div><dt>Title</dt><dd>${esc(IDENTITY.title)}</dd></div>
+          <div><dt>Version</dt><dd>${esc(IDENTITY.gameVersion)} · engine ${esc(IDENTITY.engineVersion)}</dd></div>
+          <div><dt>Model</dt><dd>${esc(IDENTITY.model)}</dd></div>
+          <div><dt>Code agent</dt><dd>${esc(IDENTITY.codeAgent)}</dd></div>
+          <div><dt>Platform</dt><dd>${esc(IDENTITY.modelPlatform)}</dd></div>
+          <div><dt>Repository</dt><dd><a href="${esc(IDENTITY.githubUrl)}" target="_blank" rel="noreferrer">${esc(IDENTITY.githubUrl)}</a></dd></div>
           <div><dt>Size</dt><dd>${fmt(bytes.length)} bytes</dd></div>
           <div><dt>SHA-256</dt><dd class="mono hash">${esc(digest || 'unavailable')}</dd></div>
           <div><dt>Rules</dt><dd class="mono">${esc(IDENTITY.rulesId)}</dd></div>
-          <div><dt>Identity</dt><dd>${esc(IDENTITY.title)}</dd></div>
+          <div><dt>Rules digest</dt><dd class="mono hash">${esc(IDENTITY.rulesDigest)}</dd></div>
         </dl>
         <button class="btn btn-primary btn-large" data-action="download-wasm">Download Arena .wasm</button>
         <h3>Upload it to the Arena</h3>

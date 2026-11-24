@@ -25,8 +25,9 @@ test.describe('standalone web game', () => {
 
     await page.click('[data-action="download"]');
     await expect(page.locator('.download-name')).toContainText('deepseek-v4-pro-claude-code-2.0.0.wasm');
-    await expect(page.locator('.hash')).toHaveText(/^[0-9a-f]{64}$/);
-    const shown = await page.locator('.hash').innerText();
+    const hashLocator = page.locator('.meta-list .hash').first();
+    await expect(hashLocator).toHaveText(/^[0-9a-f]{64}$/);
+    const shown = await hashLocator.innerText();
     const committed = createHash('sha256')
       .update(readFileSync(path.resolve('release/deepseek-v4-pro-claude-code-2.0.0.wasm')))
       .digest('hex');
