@@ -1,7 +1,7 @@
 //! GENERATED from identity/identity.json by scripts/sync-identity.mjs.
 //! Do not edit by hand; run `npm run sync` instead.
 
-pub const MODEL: &str = "DeepSeek V4.1";
+pub const MODEL: &str = "DeepSeek v4.1 Flash";
 pub const CODE_AGENT: &str = "DeepSeek Harness";
 pub const MODEL_PLATFORM: &str = "official";
 pub const GITHUB_URL: &str = "https://github.com/xmiao76/deepseek_jungle_web";
@@ -11,8 +11,8 @@ pub const RUNTIME: &str = "Rust 1.94.1 · wasm32-unknown-unknown";
 pub const RULES_ID: &str = "desktop-jungle-v2";
 pub const RULES_DIGEST: &str = "a457bbc009e975a9eafe5ff1f8fa40ca2548f2a689b121c8c4ed99dd0f3fdc57";
 pub const RUST_TOOLCHAIN: &str = "1.94.1";
-pub const TITLE: &str = "DeepSeek V4.1 · DeepSeek Harness";
-pub const RELEASE_FILENAME: &str = "deepseek-v4-1-deepseek-harness-2.0.0.wasm";
+pub const TITLE: &str = "DeepSeek v4.1 Flash · DeepSeek Harness";
+pub const RELEASE_FILENAME: &str = "deepseek-v4-1-flash-deepseek-harness-2.0.0.wasm";
 
 /// The platform segment is present only when the platform is non-empty and not
 /// the literal `official`.
@@ -113,11 +113,11 @@ mod tests {
     fn generated_values_are_consistent() {
         assert_eq!(title(), TITLE);
         assert_eq!(release_filename(), RELEASE_FILENAME);
-        assert_eq!(slug("  DeepSeek  V4.1_Harness!! "), "deepseek-v4-1-harness");
+        assert_eq!(slug("  DeepSeek  v4.1_Flash!! "), "deepseek-v4-1-flash");
         assert_eq!(
             RELEASE_FILENAME,
-            "deepseek-v4-1-deepseek-harness-2.0.0.wasm"
+            "deepseek-v4-1-flash-deepseek-harness-2.0.0.wasm"
         );
-        assert_eq!(TITLE, "DeepSeek V4.1 · DeepSeek Harness");
+        assert_eq!(TITLE, "DeepSeek v4.1 Flash · DeepSeek Harness");
     }
 }

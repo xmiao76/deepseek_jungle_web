@@ -152,7 +152,7 @@ mod tests {
     fn generated_values_are_consistent() {
         assert_eq!(title(), TITLE);
         assert_eq!(release_filename(), RELEASE_FILENAME);
-        assert_eq!(slug("  DeepSeek  V4.1_Harness!! "), "deepseek-v4-1-harness");
+        assert_eq!(slug("  DeepSeek  v4.1_Flash!! "), "deepseek-v4-1-flash");
         assert_eq!(
             RELEASE_FILENAME,
             ${rustString(releaseFilename)}

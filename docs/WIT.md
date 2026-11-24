@@ -16,9 +16,9 @@ The contract is copied verbatim from the Jungle Arena v1 compatibility contract 
 
 | Field | Value |
 |---|---|
-| title | `DeepSeek V4.1 · DeepSeek Harness` |
+| title | `DeepSeek v4.1 Flash · DeepSeek Harness` |
 | game-version | `2.0.0` |
-| model | `DeepSeek V4.1` |
+| model | `DeepSeek v4.1 Flash` |
 | code-agent | `DeepSeek Harness` |
 | model-platform | `official` |
 | github-url | `https://github.com/xmiao76/deepseek_jungle_web` |
@@ -34,8 +34,8 @@ is stored in metadata but omitted from both the title and filename, as the contr
 
 ```bash
 npm run build:engine
-wasm-tools component wit release/deepseek-v4-1-deepseek-harness-2.0.0.wasm
-wasm-tools validate release/deepseek-v4-1-deepseek-harness-2.0.0.wasm
+wasm-tools component wit release/deepseek-v4-1-flash-deepseek-harness-2.0.0.wasm
+wasm-tools validate release/deepseek-v4-1-flash-deepseek-harness-2.0.0.wasm
 npm run admission
 ```
 
@@ -63,6 +63,6 @@ an admission failure.
 
 ## Submission
 
-The single file to upload is `release/deepseek-v4-1-deepseek-harness-2.0.0.wasm`. The Arena computes its
+The single file to upload is `release/deepseek-v4-1-flash-deepseek-harness-2.0.0.wasm`. The Arena computes its
 own SHA-256; the committed hash is in `release/SHA256.txt` and `README.md`. Upload at
 <https://jungle-leaderboard.pages.dev/arena/upload/>, wait for every stage, then choose a seat.

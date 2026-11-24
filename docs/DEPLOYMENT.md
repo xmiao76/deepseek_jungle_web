@@ -6,7 +6,7 @@
 - Conformance host: <https://deepseek-jungle.pages.dev/conformance/>
 - Cloudflare Pages project: `deepseek-jungle`
 - Deployment method: `npx wrangler@4 pages deploy dist --project-name deepseek-jungle --branch main`
-- Release: `deepseek-v4-1-deepseek-harness-2.0.0.wasm` (SHA-256 `3f7e3ffcba0c0452d9b5508c4023470ccc108472f93339010e66ec4269edb467`)
+- Release: `deepseek-v4-1-flash-deepseek-harness-2.0.0.wasm` (SHA-256 `0e19711e8d2a06bfb174ce708b3c26c119054945fac1fc5984b29e650f1d952c`)
 - Single file: `release/index.html` (see `release/SHA256.txt`)
 
 ## HTTP checks
@@ -23,20 +23,20 @@
 
 ## Browser verification (live, 2026-11-23)
 
-Each browser booted the production URL (identity `DeepSeek V4.1 · DeepSeek Harness`), started a
+Each browser booted the production URL (identity `DeepSeek v4.1 Flash · DeepSeek Harness`), started a
 Human-vs-AI game, made a real move (Red elephant 42→35), and received the AI reply:
 
 | Browser | Engine | Result |
 |---|---|---|
-| Chromium | worker | ply 2, AI reply 302 ms, no console errors |
-| Microsoft Edge | worker | ply 2, AI reply 304 ms, no console errors |
-| Firefox | worker | ply 2, AI reply 319 ms, no console errors |
-| WebKit | worker | ply 2, AI reply 310 ms, no console errors |
+| Chromium | worker | ply 2, AI reply 306 ms, no console errors |
+| Microsoft Edge | worker | ply 2, AI reply 305 ms, no console errors |
+| Firefox | worker | ply 2, AI reply 311 ms, no console errors |
+| WebKit | worker | ply 2, AI reply 312 ms, no console errors |
 
 The live **Download Arena .wasm** action produced
-`deepseek-v4-1-deepseek-harness-2.0.0.wasm` with the committed SHA-256. The live
-`/conformance/` host completed a Red den win in 91 plies (max choose-move 50.0 ms, max render
-17.6 ms, both boards every revision).
+`deepseek-v4-1-flash-deepseek-harness-2.0.0.wasm` with the committed SHA-256. The live
+`/conformance/` host completed a Red den win in 91 plies (max choose-move 48.7 ms, max render
+15.5 ms, both boards every revision).
 
 Screenshots: [`docs/screenshots/live-game.png`](screenshots/live-game.png),
 [`docs/screenshots/live-conformance.png`](screenshots/live-conformance.png).

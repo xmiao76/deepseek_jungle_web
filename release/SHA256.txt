@@ -1,2 +1,2 @@
-1a0eddeccd0e5dbe48eb389f3fb1dd2fd6a0e202c34a93230c92fd7a58fc854d  release/index.html
-3f7e3ffcba0c0452d9b5508c4023470ccc108472f93339010e66ec4269edb467  release/deepseek-v4-1-deepseek-harness-2.0.0.wasm
+4dbf47441ee49a8423aa94c43b0fb4486c17f227fee57c4df11424cf588354ad  release/index.html
+0e19711e8d2a06bfb174ce708b3c26c119054945fac1fc5984b29e650f1d952c  release/deepseek-v4-1-flash-deepseek-harness-2.0.0.wasm

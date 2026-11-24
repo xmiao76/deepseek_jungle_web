@@ -15,7 +15,7 @@ for the [Jungle Arena](https://jungle-leaderboard.pages.dev/arena/).
 | Output | Path | Runs |
 |---|---|---|
 | Standalone web game | `dist/` (deployed), source in `web/` | The TypeScript shell, a Web Worker, and the shared Rust renderer/search compiled to `wasm32-unknown-unknown`. |
-| Arena entrant | `release/deepseek-v4-1-deepseek-harness-2.0.0.wasm` | A WIT Component Model binary exporting `jungle:arena/game@1.0.0`; imports only `display@1.0.0`. |
+| Arena entrant | `release/deepseek-v4-1-flash-deepseek-harness-2.0.0.wasm` | A WIT Component Model binary exporting `jungle:arena/game@1.0.0`; imports only `display@1.0.0`. |
 | Single-file offline game | `release/index.html` | The same standalone game with CSS, scripts, fonts, the engine, and the exact entrant bytes inlined. |
 | Conformance host | `dist/conformance/` | Independent JS referee + release component + fixture opponent, both in isolated browser instances. |
 | Rust artifacts | `engine/` | `jungle-core` (rules/search), `jungle-render`, `jungle-component`, `jungle-webengine`, `jungle-fixture`, `jungle-cli`. |
@@ -29,8 +29,8 @@ renderer now live in a shared dependency-free Rust core.
 <!-- identity:start -->
 | Field | Value |
 |---|---|
-| Title | DeepSeek V4.1 · DeepSeek Harness |
-| Model | DeepSeek V4.1 |
+| Title | DeepSeek v4.1 Flash · DeepSeek Harness |
+| Model | DeepSeek v4.1 Flash |
 | Code agent | DeepSeek Harness |
 | Model platform | official |
 | Game version | 2.0.0 |
@@ -39,7 +39,7 @@ renderer now live in a shared dependency-free Rust core.
 | Rules ID | desktop-jungle-v2 |
 | Rules digest | `a457bbc009e975a9eafe5ff1f8fa40ca2548f2a689b121c8c4ed99dd0f3fdc57` |
 | GitHub | <https://github.com/xmiao76/deepseek_jungle_web> |
-| Release file | `release/deepseek-v4-1-deepseek-harness-2.0.0.wasm` |
+| Release file | `release/deepseek-v4-1-flash-deepseek-harness-2.0.0.wasm` |
 <!-- identity:end -->
 
 The title, filename, component metadata, standalone menu and this README are generated from
@@ -48,8 +48,8 @@ The title, filename, component metadata, standalone menu and this README are gen
 <!-- release:start -->
 | Artifact | SHA-256 | Bytes |
 |---|---|---|
-| `release/index.html` | `1a0eddeccd0e5dbe48eb389f3fb1dd2fd6a0e202c34a93230c92fd7a58fc854d` | 10,424,059 |
-| `release/deepseek-v4-1-deepseek-harness-2.0.0.wasm` | `3f7e3ffcba0c0452d9b5508c4023470ccc108472f93339010e66ec4269edb467` | 2,871,712 |
+| `release/index.html` | `4dbf47441ee49a8423aa94c43b0fb4486c17f227fee57c4df11424cf588354ad` | 10,424,115 |
+| `release/deepseek-v4-1-flash-deepseek-harness-2.0.0.wasm` | `0e19711e8d2a06bfb174ce708b3c26c119054945fac1fc5984b29e650f1d952c` | 2,871,737 |
 
 The rules profile is `desktop-jungle-v2` with digest `a457bbc009e975a9eafe5ff1f8fa40ca2548f2a689b121c8c4ed99dd0f3fdc57`.
 <!-- release:end -->
@@ -116,7 +116,7 @@ The canonical profile is committed byte-for-byte at
 
 - **WIT contract:** [`wit/jungle.wit`](wit/jungle.wit) — exactly one import
   (`jungle:arena/display@1.0.0`) and one export (`jungle:arena/game@1.0.0`).
-- **Metadata:** title `DeepSeek V4.1 · DeepSeek Harness`, version `2.0.0`, rules
+- **Metadata:** title `DeepSeek v4.1 Flash · DeepSeek Harness`, version `2.0.0`, rules
   `desktop-jungle-v2` with the canonical digest; `model-platform` is `official`.
 - **Determinism:** a fresh TT/repetition/ordering state per `choose-move`; no clock, threads, files,
   network, OS randomness, or WASI. The same snapshot, legal list, difficulty and node budget always
@@ -131,7 +131,7 @@ The canonical profile is committed byte-for-byte at
 ### Upload it
 
 1. Open the [Arena Upload page](https://jungle-leaderboard.pages.dev/arena/upload/).
-2. Choose `release/deepseek-v4-1-deepseek-harness-2.0.0.wasm`.
+2. Choose `release/deepseek-v4-1-flash-deepseek-harness-2.0.0.wasm`.
 3. Wait for every admission stage to pass; both opening frames appear.
 4. Select **Play in left seat** or **Play in right seat**.
 

@@ -1,5 +1,5 @@
 {
-  "model": "DeepSeek V4.1",
+  "model": "DeepSeek v4.1 Flash",
   "codeAgent": "DeepSeek Harness",
   "modelPlatform": "official",
   "githubUrl": "https://github.com/xmiao76/deepseek_jungle_web",

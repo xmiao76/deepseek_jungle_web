@@ -1,8 +1,8 @@
 {
-  "title": "DeepSeek V4.1 · DeepSeek Harness",
-  "filename": "deepseek-v4-1-deepseek-harness-2.0.0.wasm",
+  "title": "DeepSeek v4.1 Flash · DeepSeek Harness",
+  "filename": "deepseek-v4-1-flash-deepseek-harness-2.0.0.wasm",
   "version": "2.0.0",
-  "model": "DeepSeek V4.1",
+  "model": "DeepSeek v4.1 Flash",
   "codeAgent": "DeepSeek Harness",
   "modelPlatform": "official",
   "githubUrl": "https://github.com/xmiao76/deepseek_jungle_web",
@@ -11,12 +11,12 @@
   "rulesId": "desktop-jungle-v2",
   "rulesDigest": "a457bbc009e975a9eafe5ff1f8fa40ca2548f2a689b121c8c4ed99dd0f3fdc57",
   "sha256": {
-    "index": "1a0eddeccd0e5dbe48eb389f3fb1dd2fd6a0e202c34a93230c92fd7a58fc854d",
-    "component": "3f7e3ffcba0c0452d9b5508c4023470ccc108472f93339010e66ec4269edb467"
+    "index": "4dbf47441ee49a8423aa94c43b0fb4486c17f227fee57c4df11424cf588354ad",
+    "component": "0e19711e8d2a06bfb174ce708b3c26c119054945fac1fc5984b29e650f1d952c"
   },
   "bytes": {
-    "index": 10424059,
-    "component": 2871712
+    "index": 10424115,
+    "component": 2871737
   },
   "standaloneWasmSha256": "ea844ab7b8caa5d9a43e380e1784f8ff6a474922034f805ef300535c68053ef0"
 }
