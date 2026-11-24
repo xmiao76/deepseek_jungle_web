@@ -201,10 +201,10 @@ Evidence:
 
 | Browser | Hosted game | Single-file `file://` | Engine mode |
 |---|---|---|---|
-| Chromium 122+ (Playwright Chromium) | full suite | full game + download hash | worker |
-| Microsoft Edge (Playwright `msedge` channel) | hosted smoke + full game | full game | worker |
-| Firefox (Playwright Firefox) | smoke | full game | worker |
-| WebKit (Playwright WebKit) | smoke | full game | worker |
+| Chromium (Playwright Chromium) | full suite | full game + download hash | worker |
+| Microsoft Edge (Playwright `msedge` channel) | hosted smoke | file boot | worker |
+| Firefox (Playwright Firefox) | smoke | single-file game | worker |
+| WebKit (Playwright WebKit) | smoke | single-file game | worker |
 
 The e2e suite records the actual mode in the test output and saves a screenshot per browser. The
 single-file test downloads the embedded component and checks its SHA-256 against the committed
