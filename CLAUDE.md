@@ -10,7 +10,7 @@ The repository now delivers both outputs required by the brief from one Rust cor
 
 1. A static browser game (`dist/`, Cloudflare Pages).
 2. A self-contained WebAssembly **Component Model** Arena entrant
-   (`release/deepseek-v4-pro-claude-code-2.0.0.wasm`), plus the committed offline single-file
+   (`release/deepseek-v4-1-deepseek-harness-2.0.0.wasm`), plus the committed offline single-file
    `release/index.html`.
 
 There is no .NET, Blazor, C# or tablebase in the shipped build. The frozen v1 engine core in

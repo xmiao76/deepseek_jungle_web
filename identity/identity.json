@@ -1,6 +1,6 @@
 {
-  "model": "DeepSeek V4 Pro",
-  "codeAgent": "Claude Code",
+  "model": "DeepSeek V4.1",
+  "codeAgent": "DeepSeek Harness",
   "modelPlatform": "official",
   "githubUrl": "https://github.com/xmiao76/deepseek_jungle_web",
   "gameVersion": "2.0.0",

@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { boot, choose, getState, start, waitForPly, watchErrors } from './helpers';
 
 const singleFile = pathToFileURL(path.resolve('release/index.html')).href;
+const releaseInfo = JSON.parse(readFileSync(path.resolve('release/RELEASE.json'), 'utf8'));
 
 test.describe('single-file release over file://', () => {
   test('boots, plays, downloads the exact component and makes no network calls', async ({ page }, testInfo) => {
@@ -42,12 +43,12 @@ test.describe('single-file release over file://', () => {
       const downloadPromise = page.waitForEvent('download');
       await page.click('[data-action="download-wasm"]');
       const download = await downloadPromise;
-      expect(download.suggestedFilename()).toBe('deepseek-v4-pro-claude-code-2.0.0.wasm');
+      expect(download.suggestedFilename()).toBe(releaseInfo.filename);
       const savePath = testInfo.outputPath('downloaded.wasm');
       await download.saveAs(savePath);
       const downloaded = createHash('sha256').update(readFileSync(savePath)).digest('hex');
       const committed = createHash('sha256')
-        .update(readFileSync(path.resolve('release/deepseek-v4-pro-claude-code-2.0.0.wasm')))
+        .update(readFileSync(path.resolve('release', releaseInfo.filename)))
         .digest('hex');
       expect(downloaded).toBe(committed);
     }

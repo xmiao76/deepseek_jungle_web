@@ -4,6 +4,9 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { boot, choose, getState, start, waitForPly, waitUntilTerminal, watchErrors } from './helpers';
 
+const releaseInfo = JSON.parse(readFileSync(path.resolve('release/RELEASE.json'), 'utf8'));
+const identityInfo = JSON.parse(readFileSync(path.resolve('identity/identity.json'), 'utf8'));
+
 test.describe('standalone web game', () => {
   test('menu, identity, how-to and download panel', async ({ page }) => {
     const errors = watchErrors(page);
@@ -11,8 +14,8 @@ test.describe('standalone web game', () => {
     expect(state.screen).toBe('menu');
     await expect(page.locator('.hero h1')).toContainText('Jungle');
     const identity = await page.locator('.identity-line').innerText();
-    expect(identity).toContain('DeepSeek V4 Pro');
-    expect(identity).toContain('Claude Code');
+    expect(identity).toContain(identityInfo.model);
+    expect(identity).toContain(identityInfo.codeAgent);
     expect(identity).toContain('official');
     await expect(page.locator('#menu-canvas')).toBeVisible();
     await page.screenshot({ path: 'docs/screenshots/menu.png', fullPage: true });
@@ -24,12 +27,12 @@ test.describe('standalone web game', () => {
     await page.click('.modal-close');
 
     await page.click('[data-action="download"]');
-    await expect(page.locator('.download-name')).toContainText('deepseek-v4-pro-claude-code-2.0.0.wasm');
+    await expect(page.locator('.download-name')).toContainText(releaseInfo.filename);
     const hashLocator = page.locator('.meta-list .hash').first();
     await expect(hashLocator).toHaveText(/^[0-9a-f]{64}$/);
     const shown = await hashLocator.innerText();
     const committed = createHash('sha256')
-      .update(readFileSync(path.resolve('release/deepseek-v4-pro-claude-code-2.0.0.wasm')))
+      .update(readFileSync(path.resolve('release', releaseInfo.filename)))
       .digest('hex');
     expect(shown).toBe(committed);
     await page.screenshot({ path: 'docs/screenshots/download-panel.png', fullPage: true });
@@ -149,12 +152,12 @@ test.describe('standalone web game', () => {
     const downloadPromise = page.waitForEvent('download');
     await page.click('[data-action="download-wasm"]');
     const download = await downloadPromise;
-    expect(download.suggestedFilename()).toBe('deepseek-v4-pro-claude-code-2.0.0.wasm');
+    expect(download.suggestedFilename()).toBe(releaseInfo.filename);
     const savePath = test.info().outputPath('downloaded.wasm');
     await download.saveAs(savePath);
     const downloaded = createHash('sha256').update(readFileSync(savePath)).digest('hex');
     const committed = createHash('sha256')
-      .update(readFileSync(path.resolve('release/deepseek-v4-pro-claude-code-2.0.0.wasm')))
+      .update(readFileSync(path.resolve('release', releaseInfo.filename)))
       .digest('hex');
     expect(downloaded).toBe(committed);
   });

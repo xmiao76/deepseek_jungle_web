@@ -97,7 +97,12 @@ pub fn slug(segment: &str) -> String {
     out
 }
 
-pub fn release_filename_for(model: &str, code_agent: &str, platform: &str, version: &str) -> String {
+pub fn release_filename_for(
+    model: &str,
+    code_agent: &str,
+    platform: &str,
+    version: &str,
+) -> String {
     let mut name = format!("{}-{}", slug(model), slug(code_agent));
     if let Some(segment) = platform_title_segment(platform) {
         name.push('-');
@@ -116,7 +121,10 @@ mod tests {
 
     #[test]
     fn brief_examples() {
-        assert_eq!(title_for("Claude-Opus-5.5", "ClaudeCode", "official"), "Claude-Opus-5.5 · ClaudeCode");
+        assert_eq!(
+            title_for("Claude-Opus-5.5", "ClaudeCode", "official"),
+            "Claude-Opus-5.5 · ClaudeCode"
+        );
         assert_eq!(
             title_for("Claude-Opus-5.5", "ClaudeCode", "SomeProvider"),
             "Claude-Opus-5.5 · ClaudeCode · SomeProvider"
@@ -134,16 +142,22 @@ mod tests {
     #[test]
     fn empty_platform_is_omitted() {
         assert_eq!(title_for("M", "A", ""), "M · A");
-        assert_eq!(release_filename_for("M", "A", "", "1.0.0"), "m-a-1.0.0.wasm");
+        assert_eq!(
+            release_filename_for("M", "A", "", "1.0.0"),
+            "m-a-1.0.0.wasm"
+        );
     }
 
     #[test]
     fn generated_values_are_consistent() {
         assert_eq!(title(), TITLE);
         assert_eq!(release_filename(), RELEASE_FILENAME);
-        assert_eq!(slug("  DeepSeek  V4_Pro!! "), "deepseek-v4-pro");
-        assert_eq!(RELEASE_FILENAME, "deepseek-v4-pro-claude-code-2.0.0.wasm");
-        assert_eq!(TITLE, "DeepSeek V4 Pro · Claude Code");
+        assert_eq!(slug("  DeepSeek  V4.1_Harness!! "), "deepseek-v4-1-harness");
+        assert_eq!(
+            RELEASE_FILENAME,
+            ${rustString(releaseFilename)}
+        );
+        assert_eq!(TITLE, ${rustString(titleText)});
     }
 }
 `;

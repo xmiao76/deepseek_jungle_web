@@ -1,8 +1,8 @@
 # Arena upload attempt
 
 **Date:** 2026-11-23 (America/Los_Angeles)  
-**Release:** `release/deepseek-v4-pro-claude-code-2.0.0.wasm`  
-**SHA-256:** `357bb306160aa714b6b5ee48cbd57ba5c141efb5f277bd60386f91fdb5b22a1c`
+**Release:** `release/deepseek-v4-1-deepseek-harness-2.0.0.wasm`  
+**SHA-256:** `3f7e3ffcba0c0452d9b5508c4023470ccc108472f93339010e66ec4269edb467`
 
 ## Attempt
 

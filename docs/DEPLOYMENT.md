@@ -6,7 +6,7 @@
 - Conformance host: <https://deepseek-jungle.pages.dev/conformance/>
 - Cloudflare Pages project: `deepseek-jungle`
 - Deployment method: `npx wrangler@4 pages deploy dist --project-name deepseek-jungle --branch main`
-- Release: `deepseek-v4-pro-claude-code-2.0.0.wasm` (SHA-256 `357bb306160aa714b6b5ee48cbd57ba5c141efb5f277bd60386f91fdb5b22a1c`)
+- Release: `deepseek-v4-1-deepseek-harness-2.0.0.wasm` (SHA-256 `3f7e3ffcba0c0452d9b5508c4023470ccc108472f93339010e66ec4269edb467`)
 - Single file: `release/index.html` (see `release/SHA256.txt`)
 
 ## HTTP checks
@@ -23,19 +23,20 @@
 
 ## Browser verification (live, 2026-11-23)
 
-Each browser booted the production URL, started a Human-vs-AI game, made a real move (Red elephant
-42→35), and received the AI reply:
+Each browser booted the production URL (identity `DeepSeek V4.1 · DeepSeek Harness`), started a
+Human-vs-AI game, made a real move (Red elephant 42→35), and received the AI reply:
 
 | Browser | Engine | Result |
 |---|---|---|
-| Chromium | worker | ply 2, AI reply ~304 ms, no console errors |
-| Microsoft Edge | worker | ply 2, AI reply ~304 ms, no console errors |
-| Firefox | worker | ply 2, AI reply ~306 ms, no console errors |
-| WebKit | worker | ply 2, AI reply ~312 ms, no console errors |
+| Chromium | worker | ply 2, AI reply 302 ms, no console errors |
+| Microsoft Edge | worker | ply 2, AI reply 304 ms, no console errors |
+| Firefox | worker | ply 2, AI reply 319 ms, no console errors |
+| WebKit | worker | ply 2, AI reply 310 ms, no console errors |
 
-The live **Download Arena .wasm** action produced a file with the committed SHA-256. The live
-`/conformance/` host completed a Red den win in 91 plies (max choose-move 55.3 ms, max render
-19.8 ms, both boards every revision).
+The live **Download Arena .wasm** action produced
+`deepseek-v4-1-deepseek-harness-2.0.0.wasm` with the committed SHA-256. The live
+`/conformance/` host completed a Red den win in 91 plies (max choose-move 50.0 ms, max render
+17.6 ms, both boards every revision).
 
 Screenshots: [`docs/screenshots/live-game.png`](screenshots/live-game.png),
 [`docs/screenshots/live-conformance.png`](screenshots/live-conformance.png).
